@@ -413,6 +413,29 @@ it("retains member failures and sweep uncertainty from a failed cleanup recheck"
   }
 });
 
+it("lets spawn environment override the injected host environment", async () => {
+  const spawned = await spawnOwnedProviderProcess({
+    command: process.execPath,
+    arguments: ["-e", "process.stdout.write(process.env.REA_HOST_TEST)"],
+    runId: "injected-host-run",
+    hostEnvironment: { PATH: process.env.PATH, REA_HOST_TEST: "host-value" },
+    env: { REA_HOST_TEST: "spawn-override" },
+  });
+  try {
+    const supervisor = new ProviderProcessSupervisor({
+      process: spawned.process,
+      ownsProcessLifetime: true,
+    });
+    expect(await supervisor.waitForExit(2_000)).toBe(true);
+    expect(supervisor.snapshot().stdout.text).toBe("spawn-override");
+  } finally {
+    if (spawned.process.exitCode === null)
+      await new Promise<void>((resolve) =>
+        spawned.process.once("close", () => resolve()),
+      );
+  }
+});
+
 describe("provider process memory limits", () => {
   it("refuses a memory limit that the selected launcher cannot enforce", async () => {
     await expect(

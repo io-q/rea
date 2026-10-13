@@ -24,9 +24,8 @@ if (isMcpMode) {
   process.exitCode = result.exitCode;
 } else {
   const { cliConfigurationError, createCli } = await import("../src/cli.ts");
-  const { createCliResultOutput } = await import(
-    "../src/cli/cliResultOutput.ts"
-  );
+  const { createCliResultOutput } =
+    await import("../src/cli/cliResultOutput.ts");
   const {
     renderCliOutputArgumentError,
     renderEmptyFilteredCliOutput,

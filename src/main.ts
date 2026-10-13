@@ -115,8 +115,9 @@ const entryPath = process.argv[1];
 const isEntrypoint = (path: string): boolean => {
   try {
     return pathToFileURL(realpathSync(path)).href === import.meta.url;
-  } catch {
-    return false;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
   }
 };
 if (entryPath !== undefined && isEntrypoint(entryPath)) {
