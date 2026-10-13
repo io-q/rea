@@ -199,10 +199,13 @@ const runToolCall = async (
   // too; otherwise a session-only tool could launch the provider unflagged.
   const opensInitialTarget = await configuresInitialTarget(options.environment);
   const openBinary = contracts.find(({ name }) => name === "open_binary");
+  // Fail closed: never skip the initial-target effects for a missing contract.
+  if (openBinary === undefined)
+    throw new Error("The open_binary contract is missing from the catalog");
   const missing = [
     ...new Set([
       ...missingEffects(contract.effects, allowed.value),
-      ...(opensInitialTarget && openBinary !== undefined
+      ...(opensInitialTarget
         ? missingEffects(openBinary.effects, allowed.value)
         : []),
     ]),

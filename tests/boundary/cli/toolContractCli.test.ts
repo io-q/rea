@@ -262,26 +262,6 @@ describe("tool calls match the MCP server", () => {
     });
   });
 
-  it("requires open_binary's effects when HOPPER_TARGET_PATH opens a target", async () => {
-    // current_address declares only mutatesSession, but a configured initial
-    // target is opened (launching the provider) before the tool runs.
-    const target = { HOPPER_TARGET_PATH: `${workspace.root}/target.bin` };
-    const refused = await serve(["call", "current_address", "{}"], target);
-    expect(refused.exitCode).toBe(1);
-    expect(refused.json).toMatchObject({
-      error: {
-        code: "EFFECTS_NOT_ALLOWED",
-        missing_effects: ["launchesProcess"],
-        allow_flag: "--allow-effects=launchesProcess",
-        opens_initial_target: true,
-      },
-    });
-    const unconfigured = await serve(["call", "current_address", "{}"]);
-    expect(unconfigured.json).not.toMatchObject({
-      error: { code: "EFFECTS_NOT_ALLOWED" },
-    });
-  });
-
   it("refuses every non-session effect when no flag is given", async () => {
     const result = await serve(["call", "inspect_sqlite_database", "{}"]);
     expect(result.exitCode).toBe(1);
@@ -353,5 +333,45 @@ describe("tool calls match the MCP server", () => {
         message: expect.stringContaining("object"),
       },
     });
+  });
+});
+
+describe("tool call initial-target consent", () => {
+  const target = (): NodeJS.ProcessEnv => ({
+    HOPPER_TARGET_PATH: `${workspace.root}/target.bin`,
+  });
+
+  it("requires open_binary's effects when HOPPER_TARGET_PATH opens a target", async () => {
+    // current_address declares only mutatesSession, but a configured initial
+    // target is opened (launching the provider) before the tool runs.
+    const refused = await serve(["call", "current_address", "{}"], target());
+    expect(refused.exitCode).toBe(1);
+    expect(refused.json).toMatchObject({
+      error: {
+        code: "EFFECTS_NOT_ALLOWED",
+        missing_effects: ["launchesProcess"],
+        allow_flag: "--allow-effects=launchesProcess",
+        opens_initial_target: true,
+      },
+    });
+  });
+
+  it("passes the gate once the open effects are named", async () => {
+    const result = await serve(
+      ["call", "current_address", "{}", "--allow-effects", "launchesProcess"],
+      target(),
+    );
+    expect(result.json).not.toMatchObject({
+      error: { code: "EFFECTS_NOT_ALLOWED" },
+    });
+  });
+
+  it("adds no open effects without a valid initial-target configuration", async () => {
+    for (const extra of [{}, { ...target(), HOPPER_TARGET_KIND: "bogus" }]) {
+      const result = await serve(["call", "current_address", "{}"], extra);
+      expect(result.json).not.toMatchObject({
+        error: { code: "EFFECTS_NOT_ALLOWED" },
+      });
+    }
   });
 });
