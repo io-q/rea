@@ -45,6 +45,13 @@ const effects = (overrides: Partial<ToolEffects> = {}): ToolEffects => ({
 
 const evidence = effects({ mutatesSession: true });
 const nativeEvidence = effects({ mutatesSession: true, launchesProcess: true });
+// An owned launch first prepares process-ownership inspection, which on macOS
+// compiles REA's run-token helper into a private temporary directory.
+const ownedNativeEvidence = effects({
+  mutatesSession: true,
+  launchesProcess: true,
+  writesFilesystem: true,
+});
 const browserEvidence = effects({
   mutatesSession: true,
   accessesNetwork: true,
@@ -492,11 +499,12 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     executesForeignCode: true,
     idempotent: false,
   }),
-  inspect_macho: nativeEvidence,
-  inspect_signature: nativeEvidence,
-  inspect_plist: nativeEvidence,
-  list_architectures: nativeEvidence,
-  demangle_swift: nativeEvidence,
+  inspect_macho: ownedNativeEvidence,
+  // Also inspects a private snapshot copy of the target.
+  inspect_signature: ownedNativeEvidence,
+  inspect_plist: ownedNativeEvidence,
+  list_architectures: ownedNativeEvidence,
+  demangle_swift: ownedNativeEvidence,
   inspect_artifact: effects({
     mutatesSession: true,
     launchesProcess: true,
@@ -553,7 +561,13 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
   }),
   list_javascript_runtime_targets: browserEvidence,
   observe_javascript_runtime: browserEvidence,
-  analyze_javascript_application: evidence,
+  // REA's analysis worker process stages sources in a private temporary
+  // directory; ASAR input is snapshotted there too.
+  analyze_javascript_application: effects({
+    mutatesSession: true,
+    writesFilesystem: true,
+    launchesProcess: true,
+  }),
   export_web_scripts: effects({
     mutatesSession: true,
     writesFilesystem: true,
@@ -576,14 +590,21 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
   project_android_application_graph: evidence,
   project_apple_application_graph: evidence,
   project_harmony_application_graph: evidence,
-  open_binary: effects({ mutatesSession: true, launchesProcess: true }),
+  // Covers the selected provider's start, including a deep provider started
+  // lazily by the first query, and that provider's private runtime files.
+  open_binary: effects({
+    mutatesSession: true,
+    launchesProcess: true,
+    writesFilesystem: true,
+  }),
   close_binary: effects({
     mutatesSession: true,
     writesFilesystem: true,
     mayDiscardData: true,
     idempotent: false,
   }),
-  binary_session: effects(),
+  // Provider availability probes run the configured Java runtime.
+  binary_session: effects({ launchesProcess: true }),
   export_evidence_bundle: effects({
     writesFilesystem: true,
     mayDiscardData: true,

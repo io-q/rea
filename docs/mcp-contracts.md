@@ -406,10 +406,16 @@ native UI scenarios), or changes an attached Android device (`mutatesDevice`:
 push, install, uninstall, start, and stop). Ordinary Evidence recording is not
 destructive. The effect record in `binary_session` and the generated catalog
 carries each flag separately.
-Effect metadata covers possible behavior across supported inputs: DMG inventory
-can launch `hdiutil` and create an owned temporary mount directory; extraction
-creates a fresh output directory on every call. Comparing supplied web captures
-or PNG artifacts uses local data without contacting the browser.
+Effect metadata covers possible behavior across supported inputs, including
+REA's own temporary work: DMG inventory can launch `hdiutil` and create an owned
+temporary mount directory; extraction creates a fresh output directory on every
+call; `binary_session` provider discovery runs the configured Java runtime to
+probe Ghidra and JADX availability; and on macOS, launching an owned helper
+process first compiles REA's process run-token reader into a private temporary
+directory. `open_binary` declares the selected provider's start and private
+runtime files even when the first provider-backed query starts it; those
+queries do not repeat that declaration. Comparing supplied web captures or PNG
+artifacts uses local data without contacting the browser.
 
 Host requirements remain in force. macOS may deny Accessibility,
 Screen Recording, or native mounting; provider tools require their selected
@@ -422,7 +428,8 @@ declared by their tools. Artifact extraction materializes the selected regular
 files into a fresh REA-chosen temporary directory and reports its path.
 
 `analyze_javascript_application` reads the supplied local directory or ASAR path
-and returns its result and Evidence inline.
+in REA's own analysis worker process, staging sources in a private temporary
+directory, and returns its result and Evidence inline.
 
 ## Ghidra first-query deadlines and recovery
 

@@ -142,8 +142,8 @@ describe("tool effects", () => {
   });
 
   it("derives destructiveHint from each destructive effect alone", () => {
-    const base = TOOL_EFFECTS["binary_session"];
-    if (base === undefined) throw new Error("binary_session is unaudited");
+    const base = TOOL_EFFECTS["list_unknowns"];
+    if (base === undefined) throw new Error("list_unknowns is unaudited");
     expect(annotationsFromEffects(base)).toEqual({
       readOnlyHint: true,
       destructiveHint: false,

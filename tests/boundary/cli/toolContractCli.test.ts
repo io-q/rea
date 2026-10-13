@@ -336,6 +336,19 @@ describe("tool calls match the MCP server", () => {
   });
 });
 
+describe("tool call effect consent", () => {
+  it("requires consent for binary_session's provider availability probes", async () => {
+    const result = await serve(["call", "binary_session", "{}"]);
+    expect(result.exitCode).toBe(1);
+    expect(result.json).toMatchObject({
+      error: {
+        code: "EFFECTS_NOT_ALLOWED",
+        missing_effects: ["launchesProcess"],
+      },
+    });
+  });
+});
+
 describe("tool call initial-target consent", () => {
   const target = (): NodeJS.ProcessEnv => ({
     HOPPER_TARGET_PATH: `${workspace.root}/target.bin`,
@@ -349,8 +362,8 @@ describe("tool call initial-target consent", () => {
     expect(refused.json).toMatchObject({
       error: {
         code: "EFFECTS_NOT_ALLOWED",
-        missing_effects: ["launchesProcess"],
-        allow_flag: "--allow-effects=launchesProcess",
+        missing_effects: ["writesFilesystem", "launchesProcess"],
+        allow_flag: "--allow-effects=writesFilesystem,launchesProcess",
         opens_initial_target: true,
       },
     });
@@ -358,7 +371,13 @@ describe("tool call initial-target consent", () => {
 
   it("passes the gate once the open effects are named", async () => {
     const result = await serve(
-      ["call", "current_address", "{}", "--allow-effects", "launchesProcess"],
+      [
+        "call",
+        "current_address",
+        "{}",
+        "--allow-effects",
+        "writesFilesystem,launchesProcess",
+      ],
       target(),
     );
     expect(result.json).not.toMatchObject({
