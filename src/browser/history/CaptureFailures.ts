@@ -24,9 +24,9 @@ import {
 } from "./CaptureRelease.js";
 const OPERATION = "inspect_web_network_capture";
 
-/** Reason for a decoder whose owned process tree reached its Job Object commit limit. */
+/** Reason for a decoder killed for exceeding its resident-set limit. */
 export const CAPTURE_PROCESS_MEMORY_LIMIT_REASON =
-  "The capture decoder reached its Windows Job Object memory limit";
+  "The capture decoder exceeded its resident memory limit and was killed";
 
 /** Preserve the origin and typed cause of a historical capture failure. */
 export const historicalCaptureFailure = (
@@ -214,7 +214,7 @@ export const captureMemoryFailure = (
     },
     {
       cause,
-      remediationAction: `Use a smaller capture exported by its producer, or another decoder with sufficient capacity for the original capture. Preserve the original for provenance; a subset does not establish complete-capture coverage.${input.format === "har" && HAR_CAPTURE_HEAP_ENFORCED ? ` REA's HAR old-generation heap is fixed at ${HAR_CAPTURE_HEAP_LIMITS.oldGenerationMiB} MiB; inherited NODE_OPTIONS cannot raise it.` : ""}${input.format === "har" && HAR_CAPTURE_PROCESS_MEMORY_LIMIT_BYTES !== null ? ` REA's HAR decoder process commit limit is fixed at ${String(HAR_CAPTURE_PROCESS_MEMORY_LIMIT_BYTES)} bytes.` : ""}`,
+      remediationAction: `Use a smaller capture exported by its producer, or another decoder with sufficient capacity for the original capture. Preserve the original for provenance; a subset does not establish complete-capture coverage.${input.format === "har" && HAR_CAPTURE_HEAP_ENFORCED ? ` REA's HAR old-generation heap is fixed at ${HAR_CAPTURE_HEAP_LIMITS.oldGenerationMiB} MiB; inherited NODE_OPTIONS cannot raise it.` : ""}${input.format === "har" && HAR_CAPTURE_PROCESS_MEMORY_LIMIT_BYTES !== null ? ` REA's HAR decoder resident memory limit is fixed at ${String(HAR_CAPTURE_PROCESS_MEMORY_LIMIT_BYTES)} bytes.` : ""}`,
       ...(cause instanceof OwnedCommandFailure && cause.snapshot !== null
         ? {
             capturedOutput: {

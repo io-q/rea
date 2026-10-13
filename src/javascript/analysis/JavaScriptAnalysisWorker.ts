@@ -83,7 +83,10 @@ export class JavaScriptAnalysisWorker {
   #parentCapacityExhausted = false;
   #sourcesRemaining: number | undefined;
   readonly #resultBudgetBytes: number;
-  /** Null when the runtime enforces the V8 heap flags instead. */
+  /**
+   * Parent-sampled resident-set limit replacing the V8 heap flags Bun ignores;
+   * null when the runtime (Node.js) enforces those flags instead.
+   */
   readonly #processMemoryLimitBytes: number | null;
   readonly #onStdout = (chunk: Buffer | string): void => {
     try {
@@ -633,7 +636,8 @@ export class JavaScriptAnalysisWorker {
               ? {}
               : { worker_heap_limit_bytes: this.#heapLimitBytes }),
           }
-        : // Bun enforces no worker heap limit; report it as unavailable.
+        : // Bun enforces no worker heap limit; report it as unavailable. Its
+          // memory is bounded by the resident-set limit reported below.
           { worker_heap_limit_bytes: null }),
       ...(this.#processMemoryLimitBytes === null
         ? {}
@@ -650,7 +654,7 @@ export class JavaScriptAnalysisWorker {
     return new AnalysisResourceConstraintError(
       OPERATION,
       "memory",
-      `Owned JavaScript worker reached its ${this.#processMemoryLimitBytes === null ? "" : `${String(this.#processMemoryLimitBytes)}-byte `}process memory limit while analyzing ${path} during ${this.#phase}`,
+      `Owned JavaScript worker exceeded its ${this.#processMemoryLimitBytes === null ? "" : `${String(this.#processMemoryLimitBytes)}-byte `}resident memory limit and was killed while analyzing ${path} during ${this.#phase}`,
       this.#limits(),
       { capturedOutput: this.#captured() },
     );

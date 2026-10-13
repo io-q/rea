@@ -25,6 +25,31 @@ import {
   waitForProviderProcessReady,
 } from "../../fixtures/providerProcess.js";
 
+/** Real RSS samples taken by memory-limited launches, observed without changing them. */
+const residentSamples = vi.hoisted(() => ({ count: 0 }));
+vi.mock(
+  "../../../src/process/ResidentMemoryWatchdog.js",
+  async (importOriginal) => {
+    const original =
+      await importOriginal<
+        typeof import("../../../src/process/ResidentMemoryWatchdog.js")
+      >();
+    return {
+      ...original,
+      watchResidentMemory: (
+        options: Parameters<typeof original.watchResidentMemory>[0],
+      ) =>
+        original.watchResidentMemory({
+          ...options,
+          read: (pid) => {
+            residentSamples.count += 1;
+            return options.read(pid);
+          },
+        }),
+    };
+  },
+);
+
 const processFixturePath = fileURLToPath(
   new URL("../../fixtures/providerProcess.mjs", import.meta.url),
 );
@@ -436,16 +461,86 @@ it("lets spawn environment override the injected host environment", async () => 
   }
 });
 
+const MIB = 1024 * 1024;
+
+/**
+ * Retains 16 MiB of touched pages every 50 ms and exits by itself at 1 GiB,
+ * about 3 s, so a watchdog that never fires fails the test instead of hanging.
+ */
+const growingChild = `
+const kept = [];
+setInterval(() => {
+  kept.push(Buffer.alloc(16 * 1024 * 1024, 1));
+  if (kept.length * 16 >= 1024) process.exit(0);
+}, 50);
+`;
+
+/** Touches 16 MiB, outlives several watchdog samples, then exits cleanly. */
+const steadyChild = `
+const kept = Buffer.alloc(16 * 1024 * 1024, 1);
+setTimeout(() => process.exit(kept[0] === 1 ? 0 : 1), 500);
+`;
+
+const superviseLimited = async (
+  script: string,
+  runId: string,
+  memoryLimitBytes: number,
+) => {
+  const spawned = await spawnOwnedProviderProcess({
+    command: process.execPath,
+    arguments: ["-e", script],
+    runId,
+    memoryLimitBytes,
+  });
+  const supervisor = new ProviderProcessSupervisor({
+    ...spawned,
+    ownsProcessLifetime: true,
+    cleanup: () => cleanupOwnedProcessGroup(spawned.ownership),
+  });
+  return { spawned, supervisor };
+};
+
 describe("provider process memory limits", () => {
-  it("refuses a memory limit that the selected launcher cannot enforce", async () => {
-    await expect(
-      spawnOwnedProviderProcess({
-        command: `${tmpdir()}/rea-provider-must-not-spawn-without-limit`,
-        arguments: [],
-        runId: "provider-process-unenforceable-limit-run",
-        memoryLimitBytes: 704 * 1024 * 1024,
-      }),
-    ).rejects.toThrow("cannot be enforced on this host");
+  it("kills the owned process group once a resident-set sample exceeds the limit", async () => {
+    const { spawned, supervisor } = await superviseLimited(
+      growingChild,
+      "provider-process-rss-limit-run",
+      192 * MIB,
+    );
+    try {
+      expect(await supervisor.waitForExit(15_000)).toBe(true);
+      expect(supervisor.observedExit()).toEqual({
+        code: null,
+        signal: "SIGKILL",
+      });
+      expect(supervisor.snapshot().memoryLimitReached).toBe(true);
+      expect(spawned.process.memoryLimitReached).toBe(true);
+      await waitForPidExit(spawned.ownership.leaderPid);
+    } finally {
+      await supervisor.stop();
+    }
+  });
+
+  it("leaves a process within its limit running to its own exit and stops sampling", async () => {
+    residentSamples.count = 0;
+    const { spawned, supervisor } = await superviseLimited(
+      steadyChild,
+      "provider-process-rss-within-limit-run",
+      512 * MIB,
+    );
+    try {
+      expect(await supervisor.waitForExit(15_000)).toBe(true);
+      expect(supervisor.observedExit()).toEqual({ code: 0, signal: null });
+      expect(supervisor.snapshot().memoryLimitReached).toBeUndefined();
+      expect(spawned.process.memoryLimitReached).toBe(false);
+      // The child outlived several 100 ms samples; none follow its exit.
+      const samplesAtExit = residentSamples.count;
+      expect(samplesAtExit).toBeGreaterThanOrEqual(3);
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      expect(residentSamples.count).toBe(samplesAtExit);
+    } finally {
+      await supervisor.stop();
+    }
   });
 });
 

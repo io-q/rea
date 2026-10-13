@@ -2,12 +2,17 @@ import { spawn, type ChildProcess } from "node:child_process";
 import type { EventEmitter } from "node:events";
 import type { Readable, Writable } from "node:stream";
 
-import type {
-  OwnedProcessGroup,
-  ProcessCleanupFailure,
-  ProcessCleanupResult,
+import {
+  cleanupOwnedProcessGroup,
+  type OwnedProcessGroup,
+  type ProcessCleanupFailure,
+  type ProcessCleanupResult,
 } from "./ProcessOwnership.js";
 import { prepareProcessOwnershipInspection } from "./ProcessOwnershipObservation.js";
+import {
+  residentMemoryReader,
+  watchResidentMemory,
+} from "./ResidentMemoryWatchdog.js";
 
 const DEFAULT_TERMINATION_GRACE_MS = 250;
 const DEFAULT_KILL_GRACE_MS = 1_000;
@@ -26,8 +31,13 @@ export interface OwnedProviderProcessSpawnOptions {
   /** Opt into a writable protocol stream; other providers retain ignored stdin. */
   readonly stdin?: "pipe";
   /**
-   * Commit limit in bytes for the whole owned process tree. No launcher on
-   * macOS or Linux can enforce it, so any value is refused.
+   * Resident-memory budget in bytes for the launched process. The parent
+   * samples the process's RSS every 100 ms until it exits and, once a
+   * sample exceeds the budget, marks `memoryLimitReached` and SIGKILLs the
+   * owned process group through verified ownership cleanup. It is a sampled
+   * RSS limit, not a heap limit: bursts between samples can overshoot it, and
+   * other members of the group are not measured. Refused where RSS cannot be
+   * read.
    */
   readonly memoryLimitBytes?: number;
   /** Cancels native ownership preparation before provider process creation. */
@@ -52,7 +62,7 @@ export interface ProviderProcessHandle extends Pick<
   readonly stderr: Readable | null;
   readonly exitCode: number | null;
   readonly signalCode: NodeJS.Signals | null;
-  /** True once an enforced process memory limit reported an allocation failure. */
+  /** True once the process exceeded its enforced memory limit and was stopped for it. */
   readonly memoryLimitReached?: boolean;
   kill(signal?: NodeJS.Signals | number): boolean;
 }
@@ -171,7 +181,9 @@ export const spawnOwnedProviderProcess = async (
     ...options.env,
     REA_PROCESS_RUN_ID: options.runId,
   };
-  if (options.memoryLimitBytes !== undefined)
+  const readResidentBytes =
+    options.memoryLimitBytes === undefined ? undefined : residentMemoryReader();
+  if (options.memoryLimitBytes !== undefined && readResidentBytes === undefined)
     throw new Error(
       "Owned process memory limits cannot be enforced on this host.",
     );
@@ -194,7 +206,21 @@ export const spawnOwnedProviderProcess = async (
       ? {}
       : { expectedCommand: options.expectedCommand ?? options.command }),
   };
-  return { process: child, ownership };
+  if (options.memoryLimitBytes === undefined || readResidentBytes === undefined)
+    return { process: child, ownership };
+  const limited = Object.assign(child, { memoryLimitReached: false });
+  const watchdog = watchResidentMemory({
+    pid,
+    limitBytes: options.memoryLimitBytes,
+    read: readResidentBytes,
+    onLimitReached: async () => {
+      limited.memoryLimitReached = true;
+      return (await cleanupOwnedProcessGroup(ownership)).cleaned;
+    },
+  });
+  if (child.exitCode !== null || child.signalCode !== null) watchdog.stop();
+  else child.once("exit", () => watchdog.stop());
+  return { process: limited, ownership };
 };
 
 /**

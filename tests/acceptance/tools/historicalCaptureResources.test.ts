@@ -43,9 +43,8 @@ const entry = JSON.stringify({
 const capture = (count: number) =>
   `{"log":{"version":"1.2","creator":{"name":"synthetic","version":"1"},"entries":[${Array<string>(count).fill(entry).join(",")}]}}`;
 
-// Node.js enforces the decoder's V8 heap flags. Bun ignores them; on Windows
-// the decoder's Job Object commit limit is the enforced bound instead, and
-// Bun elsewhere has no bound this capture can reach.
+// Node.js enforces the decoder's V8 heap flags. Bun ignores them; the
+// decoder's sampled resident-set limit is the enforced bound instead.
 const jobLimit = HAR_CAPTURE_PROCESS_MEMORY_LIMIT_BYTES;
 it.skipIf(process.versions.bun !== undefined && jobLimit === null)(
   "reports real HAR memory exhaustion through CLI and MCP and preserves server usability",
@@ -71,7 +70,7 @@ it.skipIf(process.versions.bun !== undefined && jobLimit === null)(
         message: expect.stringContaining(
           jobLimit === null
             ? "fixed V8 heap"
-            : "Windows Job Object memory limit",
+            : "exceeded its resident memory limit",
         ),
         remediation: {
           action: expect.stringContaining(

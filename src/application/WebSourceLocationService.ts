@@ -52,7 +52,7 @@ const LIMITATIONS = [
 ];
 const CODEC_BUDGET =
   "Complete evidence has a 4 MiB map, 32 MiB reply, 262144 decoded rows/segments and 64-level section budget. The owned codec has a 20-second deadline";
-/** Bun accepts but ignores the codec's V8 heap flags; Windows enforces a commit limit instead. */
+/** Bun accepts but ignores the codec's V8 heap flags; REA enforces a sampled resident-set limit instead. */
 const codecBudgetLimitation = (
   runtime: WebSourceMapReport["runtime"],
 ): string => {
@@ -60,7 +60,7 @@ const codecBudgetLimitation = (
     return `${CODEC_BUDGET}, ${String(WEB_SOURCE_MAP_LIMITS.codecHeapMiB)} MiB old-generation heap and one V8 worker; cleanup may extend the deadline. V8 heap limits do not establish aggregate RSS limits.`;
   return runtime.process_memory_limit_bytes === null
     ? `${CODEC_BUDGET}; cleanup may extend the deadline. The codec ran on Bun, which does not enforce REA's V8 heap flags, so no codec heap limit is established.`
-    : `${CODEC_BUDGET}; cleanup may extend the deadline. The codec ran on Bun, which does not enforce REA's V8 heap flags; a Windows Job Object limited its committed memory to ${String(runtime.process_memory_limit_bytes)} bytes, which is not a heap or RSS limit.`;
+    : `${CODEC_BUDGET}; cleanup may extend the deadline. The codec ran on Bun, which does not enforce REA's V8 heap flags; REA killed the codec if a resident-set sample exceeded ${String(runtime.process_memory_limit_bytes)} bytes, which is a sampled RSS limit, not a heap limit.`;
 };
 
 /** Join verified captured bytes with an explicitly selected source-map point. */

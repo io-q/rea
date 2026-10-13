@@ -104,7 +104,7 @@ it("runs the real pinned codec with an independent heap and removes its private 
       version: process.versions.bun,
       node_compatibility_version: process.versions.node,
       v8_heap_limit_bytes: null,
-      // Windows enforces a Job Object commit limit in place of the heap flags.
+      // A sampled resident-set limit is enforced in place of the heap flags.
       process_memory_limit_bytes: SOURCE_MAP_CODEC_MEMORY_LIMIT_BYTES,
     });
   expect(environment.NODE_OPTIONS).toBe(
@@ -275,15 +275,15 @@ it("rejects a codec report from a runtime other than the launching one", async (
   expect(limit.error.message).toContain("process memory limit");
 });
 it.each([true, false])(
-  "classifies a codec exit by the job memory notification (reached: %s)",
+  "classifies a codec exit by the launcher's memory-limit flag (reached: %s)",
   async (reached) => {
     const response = await realDecoder({
       launcher: async ({ memoryLimitBytes, ...options }) => {
         expect(memoryLimitBytes).toBe(
           SOURCE_MAP_CODEC_MEMORY_LIMIT_BYTES ?? undefined,
         );
-        // Without a job limit any artifact runs the child; its handle reports
-        // the notification an owned Windows job records before exit.
+        // The real child runs without the RSS watchdog; its handle reports
+        // the flag the watchdog sets before it kills an over-limit codec.
         const spawned = await spawnOwnedProviderProcess({
           ...options,
           arguments: [
@@ -307,7 +307,7 @@ it.each([true, false])(
         ? {
             _tag: "AnalysisResourceConstraintError",
             resource: "memory",
-            reason: expect.stringContaining("process memory limit"),
+            reason: expect.stringContaining("resident memory limit"),
             reportedLimits: {
               codec_process_memory_limit_bytes:
                 SOURCE_MAP_CODEC_MEMORY_LIMIT_BYTES,

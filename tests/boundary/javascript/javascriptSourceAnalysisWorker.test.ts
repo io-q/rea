@@ -19,7 +19,7 @@ const source = (path: string, value: string): JavaScriptArtifactFile => ({
   text: { included: true, value },
 });
 
-/** The Job Object limit the worker requests for its 128 MiB heap budget, if any. */
+/** The resident-set limit the worker requests for its 128 MiB heap budget under Bun, if any. */
 const processLimit = javaScriptWorkerMemoryLimitBytes(128);
 
 it("reuses one real owned analyzer while retaining distinct source identities and exported returns", async () => {
@@ -216,11 +216,11 @@ it("rejects a worker heap report that contradicts the launching runtime", async 
   }
 });
 
-// The launcher runs a real child without a job limit, so any artifact can run
-// it, and its handle reports the notification an owned Windows job records
-// before exit. Bun exits 3 (panic) or 1 (exception) at a reached job limit.
+// The launcher runs a real child without the RSS watchdog, so any runtime can
+// run it, and its handle reports the flag the watchdog sets before it kills an
+// over-limit worker. The worker's own exit status is then not trusted.
 it.each([true, false])(
-  "classifies a worker exit by the job memory notification (reached: %s)",
+  "classifies a worker exit by the launcher's memory-limit flag (reached: %s)",
   async (reached) => {
     const worker = new JavaScriptAnalysisWorker(
       { heapMb: 128, timeoutMs: 30_000 },
@@ -259,7 +259,7 @@ require("node:readline").createInterface({ input: process.stdin }).once("line", 
           ? {
               _tag: "AnalysisResourceConstraintError",
               resource: "memory",
-              reason: expect.stringContaining("process memory limit"),
+              reason: expect.stringContaining("resident memory limit"),
               reportedLimits:
                 processLimit === null
                   ? expect.not.objectContaining({

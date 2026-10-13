@@ -65,9 +65,9 @@ it.each([
   },
 );
 
-// Measured Bun 1.4.2 outcomes at a Job Object commit limit: a 512 MiB limit
-// panicked with exit 3 and a 256 MiB limit threw a JavaScript out-of-memory
-// exception with exit 1. Only the job notification identifies both.
+// A Bun decoder killed by the resident-set watchdog, or failing on its own
+// allocation, can exit many ways; only the launcher's memoryLimitReached flag
+// identifies the reached limit.
 it.each([
   { label: "a runtime panic", exitCode: 3, stderr: "panic: out of memory" },
   {
@@ -76,7 +76,7 @@ it.each([
     stderr: "RangeError: Out of memory",
   },
 ])(
-  "reports a reached Job Object memory limit after $label",
+  "reports a reached resident memory limit after $label",
   ({ exitCode, stderr }) => {
     const input = inspectWebNetworkCaptureInputSchema.parse({
       capture_path: "/selected/input.har",
@@ -106,7 +106,7 @@ it.each([
     );
     expect(projected).toMatchObject({
       code: "resource_constraint",
-      message: expect.stringContaining("Windows Job Object memory limit"),
+      message: expect.stringContaining("exceeded its resident memory limit"),
       details: {
         resource: "memory",
         reported_limits: {
@@ -117,7 +117,7 @@ it.each([
         captured_output: { stderr },
       },
     });
-    // The enforced limit is reported only where Bun runs on Windows.
+    // The enforced limit is reported only where the decoder runs on Bun.
     if (HAR_CAPTURE_PROCESS_MEMORY_LIMIT_BYTES === null)
       expect(JSON.stringify(projected)).not.toContain(
         "process_memory_limit_bytes",

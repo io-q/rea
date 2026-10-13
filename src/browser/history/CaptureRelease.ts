@@ -18,7 +18,7 @@ export const HAR_CAPTURE_HEAP_LIMITS = {
 export const HAR_CAPTURE_HEAP_ENFORCED =
   javaScriptRuntime(process.versions).id === "node";
 
-/** Windows Job Object commit limit replacing the ignored heap flags under Bun; otherwise null. */
+/** Parent-sampled resident-set limit replacing the ignored heap flags under Bun; otherwise null. */
 export const HAR_CAPTURE_PROCESS_MEMORY_LIMIT_BYTES =
   javaScriptWorkerMemoryLimitBytes(HAR_CAPTURE_HEAP_LIMITS.oldGenerationMiB);
 

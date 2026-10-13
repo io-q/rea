@@ -111,7 +111,7 @@ it.each([
       process_memory_limit_bytes: 738197504,
     },
     limitation:
-      "a Windows Job Object limited its committed memory to 738197504 bytes",
+      "REA killed the codec if a resident-set sample exceeded 738197504 bytes",
   },
   {
     runtime: {

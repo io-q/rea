@@ -257,7 +257,7 @@ const harMemoryLimitation = (): string => {
     return `HAR uses a ${String(HAR_CAPTURE_HEAP_LIMITS.oldGenerationMiB)} MiB Node old-generation heap`;
   return HAR_CAPTURE_PROCESS_MEMORY_LIMIT_BYTES === null
     ? "HAR runs on Bun, which does not enforce REA's V8 heap flags"
-    : `HAR runs on Bun, which does not enforce REA's V8 heap flags, under a ${String(HAR_CAPTURE_PROCESS_MEMORY_LIMIT_BYTES)}-byte Windows Job Object commit limit`;
+    : `HAR runs on Bun, which does not enforce REA's V8 heap flags, under a ${String(HAR_CAPTURE_PROCESS_MEMORY_LIMIT_BYTES)}-byte resident memory limit sampled by REA`;
 };
 
 const replyFailureReason = (cause: unknown): string => {
