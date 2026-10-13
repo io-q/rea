@@ -347,6 +347,17 @@ describe("tool call effect consent", () => {
       },
     });
   });
+
+  it("requires consent for close_binary's ownership-verified cleanup", async () => {
+    const result = await serve(["call", "close_binary", "{}"]);
+    expect(result.exitCode).toBe(1);
+    expect(result.json).toMatchObject({
+      error: {
+        code: "EFFECTS_NOT_ALLOWED",
+        missing_effects: expect.arrayContaining(["launchesProcess"]),
+      },
+    });
+  });
 });
 
 describe("tool call initial-target consent", () => {

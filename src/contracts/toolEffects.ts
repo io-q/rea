@@ -597,9 +597,12 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     launchesProcess: true,
     writesFilesystem: true,
   }),
+  // Owned provider cleanup reads the process table (`ps`) and, on macOS, runs
+  // REA's run-token reader to verify ownership before signalling.
   close_binary: effects({
     mutatesSession: true,
     writesFilesystem: true,
+    launchesProcess: true,
     mayDiscardData: true,
     idempotent: false,
   }),

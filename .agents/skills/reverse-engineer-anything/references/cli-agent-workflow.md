@@ -62,6 +62,9 @@ repeated: `mutatesTarget`, `writesFilesystem`, `launchesProcess`,
 `accessesNetwork`, `changesUiState`, `mayDiscardData`, `executesForeignCode`
 or `mutatesDevice`.
 
+Even status tools can declare effects: `binary_session` probes provider
+runtimes, so `rea call binary_session '{}' --allow-effects=launchesProcess`.
+
 A refusal returns `EFFECTS_NOT_ALLOWED` with `missing_effects` and the exact
 `allow_flag` that would permit them. Name only effects the user's request
 authorizes; an extraction, runtime launch or device change still needs that

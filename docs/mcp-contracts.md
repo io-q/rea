@@ -410,9 +410,10 @@ Effect metadata covers possible behavior across supported inputs, including
 REA's own temporary work: DMG inventory can launch `hdiutil` and create an owned
 temporary mount directory; extraction creates a fresh output directory on every
 call; `binary_session` provider discovery runs the configured Java runtime to
-probe Ghidra and JADX availability; and on macOS, launching an owned helper
-process first compiles REA's process run-token reader into a private temporary
-directory. `open_binary` declares the selected provider's start and private
+probe Ghidra and JADX availability; on macOS, the first owned helper launch in a REA process may compile REA's
+process run-token reader into a private temporary directory, which later
+launches reuse; `close_binary` provider cleanup reads the process table to
+verify ownership before signalling. `open_binary` declares the selected provider's start and private
 runtime files even when the first provider-backed query starts it; those
 queries do not repeat that declaration. Comparing supplied web captures or PNG
 artifacts uses local data without contacting the browser.

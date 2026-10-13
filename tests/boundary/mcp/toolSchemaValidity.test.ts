@@ -110,7 +110,7 @@ function expectKnownAuthorityHints(tools: readonly ToolSchemas[]): void {
       readOnlyHint: false,
       destructiveHint: true,
       idempotentHint: false,
-      openWorldHint: false,
+      openWorldHint: true,
     },
     export_web_scripts: {
       readOnlyHint: false,
