@@ -30,8 +30,15 @@
     "access": "public"
   },
   "type": "module",
+  "os": [
+    "darwin",
+    "linux"
+  ],
   "imports": {
-    "#javascript-analysis-worker": "./dist/composition/javascriptAnalysisWorkerProcess.js"
+    "#javascript-analysis-worker": {
+      "source": "./src/composition/javascriptAnalysisWorkerProcess.ts",
+      "default": "./dist/composition/javascriptAnalysisWorkerProcess.js"
+    }
   },
   "bin": {
     "rea": "scripts/rea.mjs",
@@ -72,9 +79,6 @@
     "DISCLAIMER.md",
     "THIRD_PARTY_NOTICES.md",
     "LICENSE",
-    "native/windows/build/manifest.json",
-    "native/windows/build/rea-windows-x64.node",
-    "scripts/verify-windows-native-artifact.mjs",
     "bridge/pwntools/layout.py",
     "bridge/pwntools/layout_impl.py",
     "third_party/pwntools/README.md",
@@ -184,7 +188,6 @@
     "verify:ghidra:aarch64-jump-table": "npm run build:cached && node scripts/verify-real-ghidra.mjs --aarch64-jump-table",
     "verify:interface-builder": "npm run build:cached && node scripts/verify/apple/interface-builder.mjs",
     "verify:ghidra:cross-format": "npm run build:cached && node scripts/verify-real-ghidra.mjs --cross-format",
-    "verify:ghidra:windows": "npm run build:cached && npm run build:ghidra-windows-fixture && node scripts/verify-real-ghidra-windows.mjs",
     "verify:browser": "npm run build:cached && node scripts/verify-real-browser.mjs",
     "verify:frida": "npm run build:cached && node scripts/verify-frida.mjs",
     "verify:frida:bindings": "tsc --noEmit -p tsconfig.frida-verification.json",
@@ -208,11 +211,9 @@
     "verify:hopper:linux": "npm run verify:fixtures && npm run build:cached && node scripts/verify-real-hopper-linux.mjs",
     "verify:setup:linux": "npm run build:cached && node scripts/verify-linux-setup-e2e.mjs",
     "build:fixtures": "node scripts/build-conformance-fixtures.mjs",
-    "build:ghidra-windows-fixture": "node scripts/create-ghidra-windows-fixture.mjs",
     "verify:fixtures": "npm run build:fixtures && node scripts/verify-conformance-fixtures.mjs",
     "verify:readiness": "npm run build:cached && npm run verify:fixtures && node scripts/verify-reconstruction-readiness.mjs",
     "verify:package": "npm run build:cached && node scripts/verify-package.mjs",
-    "verify:package:windows": "npm run build:cached && node scripts/verify-windows-package.mjs",
     "verify:qwen-client": "npm run build:cached && node scripts/verify-qwen-client.mjs",
     "verify:gemini-client": "npm run build:cached && node scripts/verify-gemini-client.mjs",
     "verify:opencode-client": "npm run build:cached && node scripts/verify-opencode-client.mjs",
@@ -224,7 +225,6 @@
     "verify:pi-client": "npm run build:cached && node scripts/verify-native-agent-client.mjs pi",
     "verify:hermes-client": "npm run build:cached && node scripts/verify-native-agent-client.mjs hermes",
     "verify:deepseek-client": "npm run build:cached && node scripts/verify-deepseek-client.mjs",
-    "probe:windows-capabilities": "npm run build:cached && node scripts/windows-capabilities.mjs",
     "verify:published": "node scripts/verify-published-package.mjs",
     "config:print": "node scripts/print-mcp-config.mjs",
     "evidence:generate": "node scripts/check-dependency-install.mjs && node scripts/run-exclusive.mjs artifacts turbo run artifacts:managed-evidence",
@@ -246,11 +246,6 @@
     "test:focused": "node scripts/run-development-tests.mjs focused",
     "test:sqlite": "npm run test:prepare && npm run test:sqlite:run",
     "test:sqlite:run": "vitest run src/application/sqlite/ tests/boundary/sqlite/ tests/acceptance/sqliteDatabaseCli.test.ts tests/boundary/mcp/serverLifecycleMcp.test.ts",
-    "build:windows-native": "node scripts/build-windows-native.mjs",
-    "verify:windows-native:artifact": "node scripts/verify-windows-native-artifact.mjs",
-    "prepublishOnly": "npm run verify:windows-native:artifact",
-    "verify:windows-native": "node scripts/verify-windows-native.mjs",
-    "verify:ghidra:windows:package": "node scripts/verify-packaged-ghidra-windows.mjs",
     "build:ghidra:nativeaot": "node scripts/build-ghidra-nativeaot.mjs",
     "build:fixtures:nativeaot": "node scripts/generate-nativeaot-fixtures.mjs",
     "verify:ghidra:nativeaot": "npm run build:cached && node scripts/verify-real-ghidra-nativeaot.mjs",

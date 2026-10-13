@@ -17,7 +17,6 @@ describe("process capture implementation ownership", () => {
     ["../../main.js", false],
     ["../../domain/process/processEvidenceProvider.js", true],
     ["../ProcessOwnership.js", true],
-    ["../../windows/WindowsOwnedProcess.js", true],
     ["./TerminalRenderer.js", true],
   ])("checks capture importing %s", (dependency, allowed) => {
     const violations = inspectModuleBoundaries(

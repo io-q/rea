@@ -27,7 +27,6 @@ import {
 } from "../application/AnalysisProvider.js";
 import type { ApktoolRequest } from "../domain/apktool/apktoolResourceAnalysis.js";
 import {
-  AnalysisCapabilityUnavailableError,
   AnalysisCancelledError,
   AnalysisInputError,
   AnalysisProtocolError,
@@ -49,11 +48,9 @@ import {
 } from "../process/OwnedCommand.js";
 import type { ProviderProcessSupervisor } from "../process/ProviderProcess.js";
 import { snapshotEnvironment } from "../process/snapshotEnvironment.js";
-import { WindowsBatchCommandError } from "../process/WindowsBatchCommand.js";
 import {
   ApktoolConfigurationFailure,
   apktoolConfigurationAvailability,
-  apktoolInvocation,
   inspectApktoolClient,
   resolveApktoolCommand,
   type ApktoolCommandSelection,
@@ -149,27 +146,11 @@ const runApktool = async (
   if (signal?.aborted === true)
     return err(new AnalysisCancelledError(operation));
   const hostEnvironment = { ...process.env, ...environment };
-  let invocation: ReturnType<typeof apktoolInvocation>;
-  try {
-    invocation = apktoolInvocation(selection, arguments_, hostEnvironment);
-  } catch (cause) {
-    if (!(cause instanceof WindowsBatchCommandError)) throw cause;
-    const reason = `The apktool batch launcher cannot receive REA's decode paths through cmd.exe: ${cause.message}`;
-    return err(
-      new AnalysisCapabilityUnavailableError(
-        APKTOOL_PROVIDER_IDENTITY.id,
-        operation,
-        reason,
-        { cause, userMessage: reason },
-      ),
-    );
-  }
   try {
     const output = await runOwnedCommand(
       {
-        command: invocation.command,
-        arguments: invocation.arguments,
-        windowsVerbatimArguments: invocation.windowsVerbatimArguments,
+        command: selection.command,
+        arguments: arguments_,
         runId: randomUUID(),
         hostEnvironment,
       },

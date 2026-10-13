@@ -571,7 +571,6 @@ export class GhidraClient {
       this.#runtimeRoot = await PrivateRuntimeRoot.create({
         parent: SESSION_ROOT,
         prefix: "rea-ghidra-",
-        platform: this.#options.platform,
       });
     } catch (cause: unknown) {
       return err(
@@ -602,7 +601,7 @@ export class GhidraClient {
         this.#options.targetPath,
         this.#runtimeRoot.path,
         this.#options.targetSha256,
-        { signal: deadline.signal, platform: this.#options.platform },
+        { signal: deadline.signal },
       );
       this.#snapshotPath = snapshot.path;
       this.#targetAdmission = snapshot.admission;

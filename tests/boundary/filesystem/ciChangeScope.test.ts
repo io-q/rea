@@ -190,7 +190,6 @@ it("retains native Inspector verification on every documented package host", asy
         "package-e2e": z.object({
           steps,
         }),
-        "windows-curated": z.object({ steps }),
       }),
     })
     .parse(
@@ -216,12 +215,6 @@ it("retains native Inspector verification on every documented package host", asy
       { os: "macos-15-intel", platform: "darwin", architecture: "x64" },
     ],
   });
-  const windowsInspector = stepSchema.parse(
-    workflow.jobs["windows-curated"].steps.find(
-      (step) => step.run === "npm run verify:inspector",
-    ),
-  );
-  expect(windowsInspector.if).toBeUndefined();
 });
 
 it.each([
@@ -292,7 +285,7 @@ it.each([
     { code: true, apple: true, package: false, runtime: false },
   ],
   [
-    "src/windows/Example.ts",
+    "src/inspector/Example.ts",
     { code: true, runtime: true, package: true, apple: false, evm: false },
   ],
   ["install.sh", { code: true, runtime: true, package: true, evm: false }],
@@ -471,7 +464,6 @@ it.each([
     ".github/ISSUE_TEMPLATE/bug.yml",
     { code: false, docs: true, workflows: false },
   ],
-  ["native/windows/README.md", { code: false, docs: true, package: false }],
   [
     "src/contracts/evm/tools.ts",
     { code: true, docs: true, evm: true, package: false },
@@ -479,10 +471,6 @@ it.each([
   ["scripts/unknown-website-helper.mjs", { code: true, package: true }],
   [
     ".github/workflows/release.yml",
-    { workflows: true, code: true, package: false, website: false },
-  ],
-  [
-    ".github/workflows/real-ghidra-windows.yml",
     { workflows: true, code: true, package: false, website: false },
   ],
   [
@@ -539,11 +527,6 @@ it.each([
   [
     "verify:inspector",
     "npm run build:cached && node scripts/verify/inspector/runtime-observation.mjs",
-    { package: true, apple: false, evm: false, browser: false },
-  ],
-  [
-    "verify:windows-native",
-    "node scripts/verify-windows-native.mjs",
     { package: true, apple: false, evm: false, browser: false },
   ],
 ])(
@@ -652,7 +635,7 @@ const INTEL_HOST = {
 
 it("keeps macOS x64 package verification for ci:full and non-PR events", async () => {
   const { directory, base } = await fixture();
-  const head = await change(directory, ["src/windows/Example.ts"]);
+  const head = await change(directory, ["src/inspector/Example.ts"]);
   const matrix = z.object({ include: z.array(z.unknown()) });
   const hosts = async (event: string, full: boolean) =>
     matrix.parse((await classify(directory, base, head, event, full)).matrix)
@@ -708,9 +691,7 @@ it("owns every explicit native-host test path with the lane that runs it", async
         !(SCOPES[scope] ?? []).some((pattern) => matchesGlob(path, pattern)),
     );
   expect(listed("apple-artifacts").length).toBeGreaterThan(0);
-  expect(listed("windows-curated").length).toBeGreaterThan(0);
   expect(unowned("apple-artifacts", "apple")).toEqual([]);
-  expect(unowned("windows-curated", "package")).toEqual([]);
 });
 
 it("never runs a manual-only verifier from an automatic workflow", async () => {

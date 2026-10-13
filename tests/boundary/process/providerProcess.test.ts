@@ -18,7 +18,6 @@ import {
   spawnOwnedProviderProcess,
   type ProviderProcessDiagnostic,
 } from "../../../src/process/ProviderProcess.js";
-import { WINDOWS_NATIVE_AUTHORITY_UNAVAILABLE_REASON } from "../../../src/process/WindowsAuthority.js";
 import {
   spawnProviderProcessFixture,
   stopProviderProcessFixture,
@@ -67,15 +66,6 @@ describe("provider process runtime and wait primitives", () => {
     await Promise.all([first, second]);
     await expect(access(runtime.path)).rejects.toMatchObject({
       code: "ENOENT",
-    });
-  });
-
-  it("fails closed for a Windows runtime root without native DACL authority", async () => {
-    await expect(
-      PrivateRuntimeRoot.create({ platform: "win32" }),
-    ).rejects.toMatchObject({
-      code: "private-runtime-root-authority-unavailable",
-      message: WINDOWS_NATIVE_AUTHORITY_UNAVAILABLE_REASON,
     });
   });
 
@@ -423,32 +413,6 @@ it("retains member failures and sweep uncertainty from a failed cleanup recheck"
   }
 });
 
-describe("provider process host injection", () => {
-  it("uses injected host platform and environment when spawning", async () => {
-    const spawned = await spawnOwnedProviderProcess({
-      command: process.execPath,
-      arguments: ["-e", "process.stdout.write(process.env.REA_HOST_TEST)"],
-      runId: "injected-host-run",
-      platform: "win32",
-      hostEnvironment: { PATH: process.env.PATH, REA_HOST_TEST: "host-value" },
-      env: { REA_HOST_TEST: "spawn-override" },
-    });
-    try {
-      const supervisor = new ProviderProcessSupervisor({
-        process: spawned.process,
-        ownsProcessLifetime: true,
-      });
-      expect(await supervisor.waitForExit(2_000)).toBe(true);
-      expect(supervisor.snapshot().stdout.text).toBe("spawn-override");
-    } finally {
-      if (spawned.process.exitCode === null)
-        await new Promise<void>((resolve) =>
-          spawned.process.once("close", () => resolve()),
-        );
-    }
-  });
-});
-
 describe("provider process memory limits", () => {
   it("refuses a memory limit that the selected launcher cannot enforce", async () => {
     await expect(
@@ -456,10 +420,9 @@ describe("provider process memory limits", () => {
         command: `${tmpdir()}/rea-provider-must-not-spawn-without-limit`,
         arguments: [],
         runId: "provider-process-unenforceable-limit-run",
-        platform: "linux",
         memoryLimitBytes: 704 * 1024 * 1024,
       }),
-    ).rejects.toThrow("require the Windows Job Object launcher");
+    ).rejects.toThrow("cannot be enforced on this host");
   });
 });
 
@@ -651,54 +614,4 @@ describe("provider process spawning primitives", () => {
       }),
     ).rejects.toMatchObject({ code: "ENOENT" });
   });
-});
-
-describe("provider process configured-platform spawning", () => {
-  it.skipIf(process.platform === "win32")(
-    "uses the configured platform when establishing process-group identity",
-    async () => {
-      const windowsConfigured = await spawnOwnedProviderProcess({
-        command: process.execPath,
-        arguments: [processFixturePath, "graceful"],
-        runId: "provider-process-configured-win32-run",
-        platform: "win32",
-      });
-      const posixConfigured = await spawnOwnedProviderProcess({
-        command: process.execPath,
-        arguments: [processFixturePath, "graceful"],
-        runId: "provider-process-configured-posix-run",
-        platform: "linux",
-      });
-      try {
-        await Promise.all([
-          waitForProviderProcessReady(windowsConfigured.process),
-          waitForProviderProcessReady(posixConfigured.process),
-        ]);
-        await expect(
-          observeOwnedProcessLineage(windowsConfigured.ownership),
-        ).resolves.toMatchObject({
-          status: "unavailable",
-          reason: "owned launcher process-group identity did not match",
-          launcherPid: windowsConfigured.process.pid,
-        });
-        await expect(
-          observeOwnedProcessLineage(posixConfigured.ownership),
-        ).resolves.toMatchObject({
-          status: "verified",
-          lineage: {
-            runId: "provider-process-configured-posix-run",
-            launcherPid: posixConfigured.process.pid,
-            launcherParentPid: process.pid,
-            processGroupId: posixConfigured.process.pid,
-            descendants: [],
-          },
-        });
-      } finally {
-        await Promise.all([
-          stopProviderProcessFixture(windowsConfigured.process),
-          stopProviderProcessFixture(posixConfigured.process),
-        ]);
-      }
-    },
-  );
 });

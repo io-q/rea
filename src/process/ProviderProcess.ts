@@ -2,8 +2,6 @@ import { spawn, type ChildProcess } from "node:child_process";
 import type { EventEmitter } from "node:events";
 import type { Readable, Writable } from "node:stream";
 
-import { WindowsOwnedProcess } from "../windows/WindowsOwnedProcess.js";
-
 import type {
   OwnedProcessGroup,
   ProcessCleanupFailure,
@@ -21,19 +19,15 @@ export interface OwnedProviderProcessSpawnOptions {
   readonly runId: string;
   /** Null disables argv-prefix matching for interpreter-driven launch scripts. */
   readonly expectedCommand?: string | null;
-  /** Preserve a pre-quoted Windows command-interpreter invocation exactly. */
-  readonly windowsVerbatimArguments?: boolean;
   readonly cwd?: string;
   readonly env?: NodeJS.ProcessEnv;
-  /** Host platform used to choose detached process-group behavior. */
-  readonly platform?: NodeJS.Platform;
   /** Host environment used as the base for the child environment. */
   readonly hostEnvironment?: NodeJS.ProcessEnv;
   /** Opt into a writable protocol stream; other providers retain ignored stdin. */
   readonly stdin?: "pipe";
   /**
-   * Commit limit in bytes for the whole owned process tree, enforced by its
-   * Windows Job Object. Other launchers cannot enforce it and refuse it.
+   * Commit limit in bytes for the whole owned process tree. No launcher on
+   * macOS or Linux can enforce it, so any value is refused.
    */
   readonly memoryLimitBytes?: number;
   /** Cancels native ownership preparation before provider process creation. */
@@ -160,7 +154,7 @@ export type ProviderProcessStopResult =
     };
 
 /**
- * Spawn a provider in an owned Windows job or dedicated POSIX process group.
+ * Spawn a provider in an dedicated POSIX process group.
  *
  * The caller remains responsible for persisting any ownership manifest and for
  * selecting provider-specific command arguments or environment values.
@@ -171,48 +165,20 @@ export const spawnOwnedProviderProcess = async (
   options.signal?.throwIfAborted();
   await prepareProcessOwnershipInspection(options.signal);
   options.signal?.throwIfAborted();
-  const platform = options.platform ?? process.platform;
   const hostEnvironment = options.hostEnvironment ?? process.env;
   const environment = {
     ...hostEnvironment,
     ...options.env,
     REA_PROCESS_RUN_ID: options.runId,
   };
-  if (platform === "win32" && process.platform === "win32") {
-    const child = new WindowsOwnedProcess(
-      options.command,
-      options.arguments,
-      options.cwd,
-      environment,
-      options.windowsVerbatimArguments ?? false,
-      {
-        protocolStdin: options.stdin === "pipe",
-        ...(options.memoryLimitBytes === undefined
-          ? {}
-          : { memoryLimitBytes: options.memoryLimitBytes }),
-      },
-    );
-    return {
-      process: child,
-      ownership: {
-        runId: options.runId,
-        leaderPid: child.pid,
-        processGroupId: child.pid,
-        expectedParentPid: process.pid,
-      },
-      cleanup: () => child.cleanup(),
-    };
-  }
   if (options.memoryLimitBytes !== undefined)
     throw new Error(
-      "Owned process memory limits require the Windows Job Object launcher; no limit can be enforced on this host.",
+      "Owned process memory limits cannot be enforced on this host.",
     );
   const child = spawn(options.command, [...options.arguments], {
     shell: false,
-    windowsHide: true,
     stdio: [options.stdin ?? "ignore", "pipe", "pipe"],
-    detached: platform !== "win32",
-    windowsVerbatimArguments: options.windowsVerbatimArguments ?? false,
+    detached: true,
     env: environment,
     ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
   });

@@ -84,7 +84,6 @@ import { nativeLoadImageObservationSchema } from "../domain/native/nativeLoadIma
 import {
   GHIDRA_PROVIDER_IDENTITY,
   healthLimitations,
-  windowsP0Limitations,
   limitationsFor,
   relationshipCoverageFor,
 } from "./GhidraProviderCapabilities.js";
@@ -96,10 +95,6 @@ import {
   validateGhidraExtensionProfile,
   ghidraExtensionLimitations,
 } from "./extensions/GhidraExtensions.js";
-import {
-  windowsNativeAuthorityUnavailableReason,
-  hasWindowsNativeAuthority,
-} from "../process/WindowsAuthority.js";
 import { ghidraRawBinaryLanguage } from "./GhidraRawBinaryLanguage.js";
 
 /** Production seam for exercising provider projection without a real process. */
@@ -527,13 +522,11 @@ export const createGhidraProviderClient = (input: {
     ...ghidraRiscvLimitations(target),
   ];
   const providerLimitations =
-    installation.platform === "win32"
-      ? windowsP0Limitations
-      : installation.platform === "darwin"
-        ? [
-            "macOS sessions require a matching executable Ghidra native decompiler; REA checks for it but does not build native components or change Gatekeeper quarantine state.",
-          ]
-        : [];
+    installation.platform === "darwin"
+      ? [
+          "macOS sessions require a matching executable Ghidra native decompiler; REA checks for it but does not build native components or change Gatekeeper quarantine state.",
+        ]
+      : [];
   const client = clientFactory({
     startupTimeoutMs: config.ghidraStartupTimeoutMs,
     platform: installation.platform,
@@ -570,15 +563,9 @@ export const createGhidraProviderClient = (input: {
       platform: installation.platform,
       ...(extensions.length === 0 ? {} : { analysisExtensions: extensions }),
     }),
-    targetPath:
-      installation.platform === "win32"
-        ? (target.sourcePath ?? target.path)
-        : target.path,
+    targetPath: target.path,
     targetSha256: target.sha256,
-    transport:
-      installation.platform === "win32"
-        ? "authenticated-loopback-tcp"
-        : "unix-socket",
+    transport: "unix-socket",
     providerVersion: prerequisites.value.providerVersion,
     profileDigest: committedProfile.digest,
     ...(["dos-mz", "dos-com"].includes(target.format)
@@ -932,17 +919,6 @@ const ghidraClientPrerequisites = (
       new ProviderAdapterError("ghidra", "health", {
         diagnostics: ghidraInstallationDiagnostics(installation),
       }),
-    );
-  if (
-    installation.platform === "win32" &&
-    !hasWindowsNativeAuthority(installation.platform)
-  )
-    return err(
-      new AnalysisCapabilityUnavailableError(
-        "ghidra",
-        "health",
-        windowsNativeAuthorityUnavailableReason(installation.platform),
-      ),
     );
   if (profile === undefined || profile.provider.id !== "ghidra")
     return err(new ProviderAdapterError("ghidra", "health"));

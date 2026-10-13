@@ -3,8 +3,7 @@ const outputs = jobs.changes.outputs;
 const required = ["changes", "static", "test"];
 const lanes = {
   code: ["build", "test-shard", "sqlite-runtime"],
-  runtime: ["windows-native-build", "package-e2e"],
-  package: ["windows-curated"],
+  runtime: ["package-e2e"],
   apple: ["apple-artifacts"],
   fixtures: ["conformance-fixtures"],
   readiness: ["reconstruction-readiness"],

@@ -1,4 +1,5 @@
-import { createRequire } from "node:module";
+import { SerializeAddon } from "@xterm/addon-serialize";
+import HeadlessModule from "@xterm/headless";
 import type { TerminalRetention } from "../../domain/process/processCaptureCoverage.js";
 
 import type {
@@ -6,13 +7,11 @@ import type {
   RenderedTerminalFrame,
 } from "../../domain/process/processCapture.js";
 
-const require = createRequire(import.meta.url);
+// Spike: static default imports (module.exports of the CommonJS packages) so
+// `bun build --compile` can bundle them; createRequire hid them from the bundler.
 // SAFETY: both pinned xterm packages publish CommonJS at runtime and matching declarations.
 const HeadlessPackage =
-  require("@xterm/headless") as typeof import("@xterm/headless");
-// SAFETY: the addon package is pinned with the compatible headless xterm release.
-const SerializePackage =
-  require("@xterm/addon-serialize") as typeof import("@xterm/addon-serialize");
+  HeadlessModule as unknown as typeof import("@xterm/headless");
 
 const TRAILING_SPACES = / +$/u;
 
@@ -35,7 +34,7 @@ interface TerminalRendererOptions {
  */
 export class TerminalRenderer {
   readonly #terminal: InstanceType<typeof HeadlessPackage.Terminal>;
-  readonly #serializeAddon = new SerializePackage.SerializeAddon();
+  readonly #serializeAddon = new SerializeAddon();
   readonly #frames: RenderedTerminalFrame[] = [];
   #pending: Promise<void> = Promise.resolve();
   #capturedBytes = 0;

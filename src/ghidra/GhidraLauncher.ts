@@ -6,16 +6,9 @@ import {
 import type { GhidraLanguageOverride } from "../config/ghidraLanguageOverride.js";
 import { snapshotEnvironment } from "../process/snapshotEnvironment.js";
 import { mkdir, realpath } from "node:fs/promises";
-import { basename, dirname, join, posix, win32 } from "node:path";
+import { dirname, join, posix } from "node:path";
 
 import writeFileAtomic from "write-file-atomic";
-
-import { windowsPrivateRuntime } from "../windows/WindowsPrivateRuntime.js";
-import {
-  quoteWindowsBatchToken,
-  windowsBatchCommand,
-  WindowsBatchCommandError,
-} from "../process/WindowsBatchCommand.js";
 
 import { AnalysisCancelledError } from "../domain/analysisErrorCore.js";
 import { err, ok, type Result } from "../domain/result.js";
@@ -25,7 +18,6 @@ import { boundedUtf8Text } from "../process/boundedUtf8Text.js";
 import { redactCapturedTransportCredential } from "../process/ProviderDiagnosticRedaction.js";
 import {
   cleanupOwnedProcessGroup,
-  cleanupWindowsProcessTree,
   type ProcessCleanupResult,
 } from "../process/ProcessOwnership.js";
 import {
@@ -150,7 +142,6 @@ export interface GhidraHeadlessLauncherOptions {
   readonly javaVmName?: string;
   readonly bridgeScriptPath: string;
   readonly platform?: NodeJS.Platform;
-  readonly comSpec?: string;
   /** Select the admitted 16-bit real-mode MZ import instead of auto-detection. */
   readonly dosMz?: true;
   readonly dosCom?: true;
@@ -219,7 +210,7 @@ export class GhidraHeadlessLauncher implements GhidraLauncher {
             "Installed Allegrex content changed since profile resolution; reopen the target to resolve a fresh profile.",
           );
       }
-      await createGhidraRuntimeDirectories(paths, platform);
+      await createGhidraRuntimeDirectories(paths);
       const seedPath =
         this.options.analysisSeeds === undefined
           ? undefined
@@ -245,12 +236,10 @@ export class GhidraHeadlessLauncher implements GhidraLauncher {
             ? {}
             : { analysis_extensions: extensions }),
         })}\n`,
-        platform,
       );
       if (isAborted(options.signal))
         return err(new AnalysisCancelledError("open_binary"));
       const headlessArguments = ghidraHeadlessArguments({
-        platform,
         ...(psp === undefined ? {} : { psp: true as const }),
         ...(this.options.mipsSoftFloat === undefined
           ? {}
@@ -279,27 +268,21 @@ export class GhidraHeadlessLauncher implements GhidraLauncher {
           : { disabledAnalyzers: this.options.disabledAnalyzers }),
       });
       const scriptCommand = ghidraHeadlessCommand({
-        environment: this.options.environment,
-        platform,
         analyzeHeadlessPath: this.options.analyzeHeadlessPath,
         arguments: headlessArguments,
-        ...(this.options.comSpec === undefined
-          ? {}
-          : { comSpec: this.options.comSpec }),
       });
       const environment = ghidraLaunchEnvironment(
         paths,
         this.options.javaHome,
         platform,
-        scriptCommand.command,
         this.options.environment,
       );
-      if (platform !== "win32" && this.options.javaHome === undefined)
+      if (this.options.javaHome === undefined)
         throw new GhidraLaunchError(
           "POSIX Ghidra requires its inspected JDK home",
         );
       const command =
-        platform !== "win32" && this.options.javaHome !== undefined
+        this.options.javaHome !== undefined
           ? await ghidraJavaLaunch({
               platform,
               analyzeHeadlessPath: this.options.analyzeHeadlessPath,
@@ -341,19 +324,12 @@ export class GhidraHeadlessLauncher implements GhidraLauncher {
         runId: session.runId,
         // POSIX launches the inspected JVM directly; script wrappers cannot
         // preserve JVM property paths containing spaces as single arguments.
-        expectedCommand: platform !== "win32" ? command.command : null,
-        windowsVerbatimArguments: platform === "win32",
-        platform,
+        expectedCommand: command.command,
         env: command.environment,
         hostEnvironment: {},
         ...(options.signal === undefined ? {} : { signal: options.signal }),
       });
-      const partialLaunch = ownedGhidraLaunch(
-        started,
-        paths,
-        platform,
-        launchSupport,
-      );
+      const partialLaunch = ownedGhidraLaunch(started, paths, launchSupport);
       await writeGhidraRuntimeFile(
         paths.ownershipPath,
         `${JSON.stringify({
@@ -363,13 +339,11 @@ export class GhidraHeadlessLauncher implements GhidraLauncher {
           pid: started.ownership.leaderPid,
           process_group_id: started.ownership.processGroupId,
           parent_pid: process.pid,
-          ownership_kind:
-            platform === "win32" ? "windows-job-object" : "posix-process-group",
+          ownership_kind: "posix-process-group",
           launcher: command.command,
           headless_script: this.options.analyzeHeadlessPath,
           created_at: new Date().toISOString(),
         })}\n`,
-        platform,
       );
       if (isAborted(options.signal)) {
         throw new AnalysisCancelledError("open_binary");
@@ -392,7 +366,7 @@ export class GhidraHeadlessLauncher implements GhidraLauncher {
 
       let cleanupFailure: unknown;
       try {
-        const cleanup = await cleanupStartedProcess(started, platform);
+        const cleanup = await cleanupStartedProcess(started);
         if (!cleanup.cleaned)
           cleanupFailure = new Error(
             `Ghidra process cleanup was incomplete: ${cleanup.reason}`,
@@ -401,12 +375,7 @@ export class GhidraHeadlessLauncher implements GhidraLauncher {
         cleanupFailure = failure;
       }
       if (cleanupFailure !== undefined) {
-        const partialLaunch = ownedGhidraLaunch(
-          started,
-          paths,
-          platform,
-          launchSupport,
-        );
+        const partialLaunch = ownedGhidraLaunch(started, paths, launchSupport);
         const primaryMessage = isAborted(options.signal)
           ? primary.message
           : `Ghidra headless launch failed: ${cause instanceof Error ? cause.message : String(cause)}`;
@@ -434,10 +403,9 @@ export class GhidraHeadlessLauncher implements GhidraLauncher {
 const ownedGhidraLaunch = (
   spawned: SpawnedOwnedProviderProcess,
   paths: ReturnType<typeof ghidraRuntimePaths>,
-  platform: NodeJS.Platform,
   launchSupport: readonly GhidraLaunchSupportDiagnostic[],
 ): GhidraLaunch => ({
-  ...ownedGhidraProcess(spawned, platform),
+  ...ownedGhidraProcess(spawned),
   projectRoot: paths.projectRoot,
   ghidraLogPath: paths.ghidraLogPath,
   scriptLogPath: paths.scriptLogPath,
@@ -446,7 +414,6 @@ const ownedGhidraLaunch = (
 
 const ownedGhidraProcess = (
   spawned: SpawnedOwnedProviderProcess,
-  platform: NodeJS.Platform,
 ): Pick<
   Extract<ProviderProcessLaunch, { readonly ownsProcessLifetime: true }>,
   "process" | "ownsProcessLifetime" | "ownership" | "cleanup"
@@ -454,7 +421,7 @@ const ownedGhidraProcess = (
   process: spawned.process,
   ownsProcessLifetime: true,
   ownership: spawned.ownership,
-  cleanup: () => cleanupStartedProcess(spawned, platform),
+  cleanup: () => cleanupStartedProcess(spawned),
 });
 
 /** Exact executable and argv passed to shell-free process creation. */
@@ -463,62 +430,24 @@ export interface GhidraHeadlessCommand {
   readonly arguments: readonly string[];
 }
 
-/** Build a direct POSIX launch or a conservatively quoted Windows batch call. */
+/** Build the direct launch of the inspected analyzeHeadless script. */
 export const ghidraHeadlessCommand = (options: {
-  readonly environment: Readonly<NodeJS.ProcessEnv>;
-  readonly platform: NodeJS.Platform;
   readonly analyzeHeadlessPath: string;
   readonly arguments: readonly string[];
-  readonly comSpec?: string;
-}): GhidraHeadlessCommand => {
-  if (options.platform !== "win32")
-    return {
-      command: options.analyzeHeadlessPath,
-      arguments: [...options.arguments],
-    };
-  const command = ghidraBatchStep(() =>
-    windowsBatchCommand({
-      environment: options.environment,
-      batchPath: options.analyzeHeadlessPath,
-      arguments: options.arguments,
-      ...(options.comSpec === undefined ? {} : { comSpec: options.comSpec }),
-    }),
-  );
-  if ((command.arguments.at(-1)?.length ?? 0) > 30_000)
-    throw new GhidraLaunchError(
-      "Windows Ghidra command exceeds the P0 length limit",
-    );
-  return command;
-};
-
-/** Keep Ghidra's launch error type and P0 wording for shared batch checks. */
-const ghidraBatchStep = <T>(step: () => T): T => {
-  try {
-    return step();
-  } catch (cause: unknown) {
-    if (!(cause instanceof WindowsBatchCommandError)) throw cause;
-    throw new GhidraLaunchError(
-      cause.reason === "metacharacter"
-        ? "Windows Ghidra P0 paths cannot contain command-interpreter metacharacters"
-        : cause.message,
-      { cause },
-    );
-  }
-};
+}): GhidraHeadlessCommand => ({
+  command: options.analyzeHeadlessPath,
+  arguments: [...options.arguments],
+});
 
 const cleanupStartedProcess = (
   started: SpawnedOwnedProviderProcess,
-  platform: NodeJS.Platform,
 ): Promise<ProcessCleanupResult> =>
   started.cleanup !== undefined
     ? started.cleanup()
-    : platform === "win32"
-      ? cleanupWindowsProcessTree(started.ownership.leaderPid)
-      : cleanupOwnedProcessGroup(started.ownership);
+    : cleanupOwnedProcessGroup(started.ownership);
 
 /** Paths encoded into one bounded analyzeHeadless invocation. */
 export interface GhidraHeadlessArgumentOptions {
-  readonly platform?: NodeJS.Platform;
   readonly projectRoot: string;
   readonly targetPath: string;
   readonly bridgeScriptPath: string;
@@ -545,10 +474,7 @@ export interface GhidraHeadlessArgumentOptions {
 export const ghidraHeadlessArguments = (
   options: GhidraHeadlessArgumentOptions,
 ): readonly string[] => {
-  // Bridge script paths use the target platform's syntax, which differs from
-  // the host when building a cross-platform invocation.
-  const scriptPath =
-    (options.platform ?? process.platform) === "win32" ? win32 : posix;
+  const scriptPath = posix;
   const bridgeDirectory = scriptPath.dirname(options.bridgeScriptPath);
   const override = options.languageOverride;
   const rawBinary = options.rawBinary;
@@ -687,12 +613,8 @@ export const ghidraHeadlessArguments = (
           scriptPath.join(bridgeDirectory, "ReaGhidraAnalysisOptions.java"),
           options.disabledAnalyzers.join(","),
         ]),
-    ...((options.platform ?? process.platform) === "win32"
-      ? []
-      : [
-          "-postScript",
-          scriptPath.join(bridgeDirectory, "ReaGhidraNoReturnFix.java"),
-        ]),
+    "-postScript",
+    scriptPath.join(bridgeDirectory, "ReaGhidraNoReturnFix.java"),
     // After analysis and the no-return refit, before the bridge serves results.
     ...(options.mipsSoftFloat === true
       ? [
@@ -723,21 +645,7 @@ const ghidraRuntimePaths = (runtimeRoot: string) => ({
 
 const createGhidraRuntimeDirectories = async (
   paths: ReturnType<typeof ghidraRuntimePaths>,
-  platform: NodeJS.Platform,
 ): Promise<void> => {
-  if (platform === "win32") {
-    const runtime = windowsPrivateRuntime(dirname(paths.projectRoot));
-    for (const path of [
-      paths.projectRoot,
-      paths.homeRoot,
-      paths.tempRoot,
-      paths.cacheRoot,
-      paths.configRoot,
-      paths.dataRoot,
-    ])
-      runtime.mkdir(basename(path));
-    return;
-  }
   await Promise.all(
     [
       paths.projectRoot,
@@ -753,12 +661,7 @@ const createGhidraRuntimeDirectories = async (
 const writeGhidraRuntimeFile = async (
   path: string,
   content: string,
-  platform: NodeJS.Platform,
 ): Promise<void> => {
-  if (platform === "win32") {
-    windowsPrivateRuntime(dirname(path)).writeFile(basename(path), content);
-    return;
-  }
   await writeFileAtomic(path, content, { encoding: "utf8", mode: 0o600 });
 };
 
@@ -766,52 +669,20 @@ const ghidraLaunchEnvironment = (
   paths: ReturnType<typeof ghidraRuntimePaths>,
   javaHome: string | undefined,
   platform: NodeJS.Platform,
-  executable: string,
   selectedEnvironment: Readonly<NodeJS.ProcessEnv>,
 ): NodeJS.ProcessEnv => {
   return {
     ...ghidraJavaEnvironment(javaHome, selectedEnvironment, platform),
-    ...ghidraHeadlessJavaOptions(paths.homeRoot, paths.tempRoot, platform),
+    // POSIX launches the JVM directly, so JVM properties travel as separate
+    // argv items instead of the shell-split analyzeHeadless option list.
+    JDK_JAVA_OPTIONS: "",
+    GHIDRA_HEADLESS_JAVA_OPTIONS: "",
     HOME: paths.homeRoot,
     TMPDIR: paths.tempRoot,
-    ...(platform === "win32"
-      ? {
-          // Batch FOR /F launches another command interpreter through ComSpec.
-          // Use the same executable with the spelling consumed by cmd.exe.
-          ComSpec: executable.replaceAll("/", "\\"),
-          USERPROFILE: paths.homeRoot,
-          APPDATA: paths.configRoot,
-          LOCALAPPDATA: paths.cacheRoot,
-          TEMP: paths.tempRoot,
-          TMP: paths.tempRoot,
-        }
-      : {}),
     XDG_CACHE_HOME: paths.cacheRoot,
     XDG_CONFIG_HOME: paths.configRoot,
     XDG_DATA_HOME: paths.dataRoot,
   };
-};
-
-/** Encode provider-owned JVM paths for the platform launcher that consumes them. */
-export const ghidraHeadlessJavaOptions = (
-  homeRoot: string,
-  tempRoot: string,
-  platform: NodeJS.Platform,
-): Pick<
-  NodeJS.ProcessEnv,
-  "JDK_JAVA_OPTIONS" | "GHIDRA_HEADLESS_JAVA_OPTIONS"
-> => {
-  const options = [`-Duser.home=${homeRoot}`, `-Djava.io.tmpdir=${tempRoot}`];
-  if (platform === "win32")
-    return {
-      JDK_JAVA_OPTIONS: [...options, "-XX:-UsePerfData"]
-        .map((option) => ghidraBatchStep(() => quoteWindowsBatchToken(option)))
-        .join(" "),
-      GHIDRA_HEADLESS_JAVA_OPTIONS: "",
-    };
-  // POSIX launches the JVM directly, so these properties travel as separate
-  // argv items instead of the shell-split analyzeHeadless option list.
-  return { JDK_JAVA_OPTIONS: "", GHIDRA_HEADLESS_JAVA_OPTIONS: "" };
 };
 
 const isAborted = (signal?: AbortSignal): boolean => signal?.aborted === true;

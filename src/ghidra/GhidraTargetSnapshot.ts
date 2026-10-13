@@ -10,7 +10,6 @@ import {
   AnalysisArtifactChangedError,
   AnalysisAccessDeniedError,
 } from "../domain/analysisErrorCore.js";
-import { windowsPrivateRuntime } from "../windows/WindowsPrivateRuntime.js";
 
 /** Immutable target copy admitted to one ephemeral Ghidra import. */
 export interface GhidraTargetSnapshot {
@@ -24,10 +23,7 @@ export const createGhidraTargetSnapshot = async (
   sourcePath: string,
   runtimeRoot: string,
   expectedSha256: string,
-  options: {
-    readonly signal?: AbortSignal;
-    readonly platform?: NodeJS.Platform;
-  } = {},
+  options: { readonly signal?: AbortSignal } = {},
 ): Promise<GhidraTargetSnapshot> => {
   if (!/^[a-f0-9]{64}$/u.test(expectedSha256))
     throw new TypeError("Ghidra target SHA-256 commitment is invalid");
@@ -36,24 +32,6 @@ export const createGhidraTargetSnapshot = async (
     runtimeRoot,
     `target-${expectedSha256.slice(0, 12)}${suffix}`,
   );
-  if ((options.platform ?? process.platform) === "win32") {
-    const observed = await windowsPrivateRuntime(runtimeRoot).snapshot(
-      sourcePath,
-      `target-${expectedSha256.slice(0, 12)}${suffix}`,
-      options.signal,
-    );
-    if (observed.sha256 !== expectedSha256)
-      throw new AnalysisArtifactChangedError(
-        "open_binary",
-        sourcePath,
-        `Ghidra target snapshot digest mismatch: expected ${expectedSha256}, observed ${observed.sha256}`,
-      );
-    return {
-      path: snapshotPath,
-      sha256: observed.sha256,
-      admission: { source: observed.source, snapshot: observed.snapshot },
-    };
-  }
   let source: FileHandle | undefined;
   let destination: FileHandle | undefined;
   try {

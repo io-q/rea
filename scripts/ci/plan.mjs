@@ -23,7 +23,6 @@ const NATIVE_TEST_OWNERS = ["apple", "package"];
 // workflows' release, publication and self-hosted runner safeguards.
 const GUARDED_WORKFLOWS = new Set([
   ".github/workflows/release.yml",
-  ".github/workflows/real-ghidra-windows.yml",
   ".github/workflows/sqlite-runtime.yml",
 ]);
 // Sources compiled by build-conformance-fixtures.mjs. The readiness journey
@@ -125,7 +124,7 @@ if (
     .filter(Boolean);
   for (const file of files) {
     if (
-      /^(README(?:_[^/]+)?\.md|AGENTS\.md|CONTRIBUTING\.md|CHANGELOG\.md|SECURITY\.md|native\/windows\/README\.md|\.github\/pull_request_template\.md)$/.test(
+      /^(README(?:_[^/]+)?\.md|AGENTS\.md|CONTRIBUTING\.md|CHANGELOG\.md|SECURITY\.md|\.github\/pull_request_template\.md)$/.test(
         file,
       ) ||
       file.startsWith("docs/") ||

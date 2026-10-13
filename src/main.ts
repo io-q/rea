@@ -110,9 +110,15 @@ export const runEntrypoint = async (
 };
 
 const entryPath = process.argv[1];
-if (
-  entryPath !== undefined &&
-  pathToFileURL(realpathSync(entryPath)).href === import.meta.url
-) {
+// Spike: a `bun build --compile` binary reports a virtual /$bunfs entry path
+// that exists for Bun but cannot be resolved by realpath.
+const isEntrypoint = (path: string): boolean => {
+  try {
+    return pathToFileURL(realpathSync(path)).href === import.meta.url;
+  } catch {
+    return false;
+  }
+};
+if (entryPath !== undefined && isEntrypoint(entryPath)) {
   void runEntrypoint();
 }

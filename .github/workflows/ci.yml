@@ -296,45 +296,9 @@ jobs:
       - name: Verify fixtures from a clean checkout
         run: npm run verify:fixtures
 
-  windows-native-build:
-    name: Build bundled Windows x64 native controls
-    needs: changes
-    if: needs.changes.outputs.runtime == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-      - name: Prepare cross compiler
-        run: |
-          # Slow Azure archive transfers can exhaust the job before compilation.
-          # Keep the same signed packages and avoid slow HTTP mirror fallback.
-          for source in /etc/apt/apt-mirrors.txt /etc/apt/sources.list /etc/apt/sources.list.d/ubuntu.sources; do
-            if [ -f "$source" ]; then
-              sudo sed -i 's|azure.archive.ubuntu.com|archive.ubuntu.com|g; s|http://archive.ubuntu.com|https://archive.ubuntu.com|g' "$source"
-            fi
-          done
-          sudo apt-get update
-          sudo apt-get install --no-install-recommends -y g++-mingw-w64-x86-64
-      - run: npm run build:windows-native
-      - run: npm run verify:windows-native:artifact
-      - run: node scripts/build-windows-native.mjs --inspection-fixture
-      - uses: actions/upload-artifact@v4
-        with:
-          name: windows-native-inspection-fixture
-          path: .cache/windows-native-inspection-fixture/
-          if-no-files-found: error
-      - uses: actions/upload-artifact@v4
-        with:
-          name: windows-native-controls
-          path: native/windows/build/
-          if-no-files-found: error
-
   package-e2e:
     name: Native package baseline (${{ matrix.platform }} ${{ matrix.architecture }})
-    needs: [changes, build, windows-native-build]
+    needs: [changes, build]
     if: needs.changes.outputs.runtime == 'true'
     strategy:
       fail-fast: false
@@ -368,11 +332,6 @@ jobs:
         with:
           name: rea-build-cache
           path: .turbo/cache/
-      - uses: actions/download-artifact@v4
-        with:
-          name: windows-native-controls
-          path: native/windows/build/
-      - run: npm run verify:windows-native:artifact
       - name: Resolve npm cache before verifier HOME isolation
         id: npm-cache
         run: |
@@ -460,114 +419,6 @@ jobs:
             readiness-summary.json
             readiness-report.json
           if-no-files-found: error
-          retention-days: 30
-
-  windows-curated:
-    name: Windows capability and package lane
-    needs: [changes, build, windows-native-build]
-    if: needs.changes.outputs.package == 'true'
-    runs-on: windows-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
-      - uses: actions/download-artifact@v4
-        with:
-          name: rea-build-cache
-          path: .turbo/cache/
-      - run: npm run build:cached
-      - uses: actions/download-artifact@v4
-        with:
-          name: windows-native-controls
-          path: native/windows/build/
-      - run: npm run verify:windows-native:artifact
-      - name: Record named Windows host capabilities
-        run: node scripts/windows-capabilities.mjs | Out-File -Encoding utf8NoBOM windows-capabilities.json
-      - name: Validate Windows host capability report
-        run: >-
-          node -e "const report = JSON.parse(require('node:fs').readFileSync('windows-capabilities.json', 'utf8'));
-          if (report.platform !== 'win32' || report.architecture !== 'x64')
-          throw new Error('expected a Windows x64 capability report');"
-      # Keep this list aligned with tests/process-global/curatedWindowsLane.test.ts,
-      # which fails when any path below is renamed or removed. Vitest silently
-      # ignores unmatched paths, so a stale entry would otherwise report green
-      # while skipping coverage.
-      #
-      # The matching native artifact establishes real Job Object and private
-      # runtime boundaries for these fixtures. Ghidra and Java are not needed;
-      # real engine claims remain in the separate controlled-provider workflow.
-      - name: Run curated Windows capability tests
-        run: >-
-          npx vitest run --coverage.enabled=false
-          tests/boundary/filesystem/binaryTarget.test.ts
-          tests/boundary/filesystem/safeOutputTree.test.ts
-          tests/boundary/providers/native/artifactProvider.archiveSafety.test.ts
-          tests/boundary/providers/native/artifactProvider.extractionCompleteness.test.ts
-          tests/boundary/filesystem/setupUnavailableProvider.test.ts
-          tests/boundary/filesystem/windowsNpxRegistration.test.ts
-          tests/boundary/filesystem/webScriptManifestPaths.test.ts
-          tests/boundary/process/ProcessEvidence.host.test.ts
-          tests/acceptance/webModuleCli.test.ts
-          tests/acceptance/webSourceLocationCli.test.ts
-          tests/boundary/cli/referenceSourceImportStatus.test.ts
-          tests/boundary/filesystem/asarInventoryFreshness.test.ts
-          tests/boundary/filesystem/javascript-applications/javascriptArtifactReconstruction.test.ts
-          tests/conformance/providers/ghidra/windowsCapabilities.test.ts
-          src/ghidra/GhidraInstallation.test.ts
-          tests/boundary/filesystem/ghidraJavaProbe.test.ts
-          tests/boundary/providers/ghidra/ghidraTransport.test.ts
-          tests/boundary/providers/ghidra/ghidraTargetSnapshot.test.ts
-          tests/boundary/providers/ghidra/ghidraLauncher.test.ts
-          tests/boundary/providers/hopper/hopperClient.cleanupRetry.test.ts
-          src/windows/WindowsNativeLoader.test.ts
-          src/windows/WindowsOwnedProcess.test.ts
-          src/ghidra/GhidraLauncherEnvironment.test.ts
-          src/process/ProcessOwnership.test.ts
-          src/process/ProcessOwnership.part2.test.ts
-          src/process/ProcessOwnership.part3.test.ts
-          src/process/ProcessOwnership.validation.test.ts
-          src/application/Update.test.ts
-          tests/process-global/updateMaintenance.test.ts
-          tests/conformance/providers/ghidra/realGhidraWindowsWorkflow.test.ts
-      - run: npm run verify:windows-native
-      - uses: actions/download-artifact@v4
-        with:
-          name: windows-native-inspection-fixture
-          path: .cache/windows-native-inspection-fixture/
-      - name: Verify native inspection failure ownership and recovery
-        run: node scripts/verify-windows-native-inspection.mjs
-      - name: Verify real Node Inspector discovery and observation
-        timeout-minutes: 10
-        env:
-          NODE_OPTIONS: "--max-old-space-size=1024"
-          UV_THREADPOOL_SIZE: "2"
-        run: npm run verify:inspector
-      - run: npm run verify:package:windows
-      - name: Verify native directory identity on Node 24
-        run: >-
-          npx vitest run --coverage.enabled=false
-          tests/boundary/filesystem/directoryArtifactReaderOpen.test.ts
-          tests/boundary/filesystem/javascriptPackagePrecedence.test.ts
-          tests/boundary/filesystem/javascriptArtifactContentIdentity.test.ts
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22.19.0
-      - name: Verify native path boundaries on Node 22
-        run: >-
-          npx vitest run --coverage.enabled=false
-          tests/boundary/filesystem/directoryArtifactReaderOpen.test.ts
-          tests/boundary/filesystem/javascriptPackagePrecedence.test.ts
-          tests/boundary/filesystem/javascriptArtifactContentIdentity.test.ts
-          tests/boundary/process/sourceMapUncHosts.test.ts
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: windows-capabilities
-          path: windows-capabilities.json
           retention-days: 30
 
   docs:
@@ -667,11 +518,9 @@ jobs:
         sqlite-runtime,
         test,
         conformance-fixtures,
-        windows-native-build,
         package-e2e,
         apple-artifacts,
         reconstruction-readiness,
-        windows-curated,
         docs,
         workflows,
         browser,

@@ -74,7 +74,7 @@ const abi = (
 const softFloat = abi({ cpr1Size: 0, fpAbi: 3 });
 
 describe("bounded Ghidra MIPS admission", () => {
-  it("binds endian and flags without widening Windows P0", async () => {
+  it("binds endian and flags", async () => {
     const ghidra = new GhidraProvider(config, silentLogger, {}, host);
     const little = target();
     const big = target({ byteOrder: "big" });
@@ -104,16 +104,6 @@ describe("bounded Ghidra MIPS admission", () => {
       },
     });
     expect(left.value.profile?.digest).not.toBe(right.value.profile?.digest);
-    const windows = new GhidraProvider(
-      config,
-      silentLogger,
-      {},
-      {
-        ...host,
-        platform: "win32",
-      },
-    );
-    expect(windows.inspectTargetSupport(little).status).toBe("unsupported");
   });
 
   it.each([

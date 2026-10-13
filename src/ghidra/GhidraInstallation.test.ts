@@ -20,9 +20,6 @@ const HEADLESS = `${INSTALL}/support/analyzeHeadless`;
 const LINUX_DECOMPILER = `${INSTALL}/Ghidra/Features/Decompiler/os/linux_x86_64/decompile`;
 const MAC_DECOMPILER = `${INSTALL}/Ghidra/Features/Decompiler/os/mac_arm_64/decompile`;
 const WINDOWS_INSTALL = "C:\\tools\\ghidra_12.1.4_PUBLIC";
-const WINDOWS_PROPERTIES = `${WINDOWS_INSTALL}\\Ghidra\\application.properties`;
-const WINDOWS_HEADLESS = `${WINDOWS_INSTALL}\\support\\analyzeHeadless.bat`;
-const WINDOWS_DECOMPILER = `${WINDOWS_INSTALL}\\Ghidra\\Features\\Decompiler\\os\\win_x86_64\\decompile.exe`;
 
 const headerProbe = (bytes: Buffer): GhidraExecutableHeaderProbe => ({
   bytes,
@@ -183,47 +180,6 @@ describe("Ghidra installation inspection", () => {
       }
     },
   );
-
-  it("accepts the exact Windows x64 batch launcher and JDK commitment", () => {
-    const windowsHost: GhidraInstallationHost = {
-      platform: "win32",
-      architecture: "x64",
-      readText: (path) =>
-        path === WINDOWS_PROPERTIES
-          ? `application.version=${SUPPORTED_GHIDRA_VERSION}\n`
-          : undefined,
-      executable: (path) =>
-        path === WINDOWS_HEADLESS || path === WINDOWS_DECOMPILER,
-      probeJava: (command, environment) => {
-        expect(command).toBe("C:\\Java\\jdk-21\\bin\\java.exe");
-        expect(environment.PATH).toMatch(/^C:\\Java\\jdk-21\\bin;/u);
-        return {
-          ...JAVA,
-          home: "C:\\Java\\jdk-21",
-        };
-      },
-    };
-
-    expect(
-      inspectGhidraInstallation(
-        {
-          environment: {},
-          installDir: WINDOWS_INSTALL,
-          javaHome: "C:\\Java\\jdk-21",
-          platform: "win32",
-          architecture: "x64",
-        },
-        windowsHost,
-      ),
-    ).toMatchObject({
-      status: "available",
-      platform: "win32",
-      architecture: "x64",
-      analyzeHeadlessPath: WINDOWS_HEADLESS,
-      javaCommand: "C:\\Java\\jdk-21\\bin\\java.exe",
-      providerVersion: SUPPORTED_GHIDRA_VERSION,
-    });
-  });
 });
 
 describe("Ghidra installation rejection diagnostics", () => {

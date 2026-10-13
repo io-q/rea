@@ -1,13 +1,10 @@
 import type { GhidraSeedReport } from "./GhidraAnalysisSeeds.js";
 import { createHash } from "node:crypto";
-import { execFile } from "node:child_process";
 // Fake-backed provider coverage; real Ghidra verification lives in
 // `npm run verify:ghidra` and its focused variants.
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
 import { fixtureDosLoadImage } from "./GhidraLoadImage.fixture.js";
 import { fixtureRawBinaryLoadImage } from "./GhidraRawBinaryLoadImage.fixture.js";
@@ -19,7 +16,6 @@ import { jsonValueSchema } from "../domain/jsonValue.js";
 
 import { parseConfig } from "../config/parseConfig.js";
 import type { BinaryTarget } from "../domain/binaryTargetTypes.js";
-import { parseExecutableHeader } from "../domain/binaryTarget.js";
 import { GhidraProvider } from "./GhidraProvider.js";
 import type { GhidraTargetSnapshot } from "./GhidraClient.js";
 import type { GhidraProviderClientFactory } from "./GhidraProviderClient.js";
@@ -100,8 +96,6 @@ describe("Ghidra provider", () => {
         },
       },
     });
-    const windows = provider({ ...installationHost(), platform: "win32" });
-    expect(windows.inspectTargetSupport(target).status).toBe("unsupported");
   });
   it("discovers the exact installation once without launching Ghidra", () => {
     let probeCount = 0;
@@ -228,8 +222,6 @@ describe("Ghidra raw-binary profile", () => {
     expect(shifted.value.profile?.digest).not.toBe(
       resolved.value.profile.digest,
     );
-    const windows = provider({ ...installationHost(), platform: "win32" });
-    expect(windows.inspectTargetSupport(target).status).toBe("unsupported");
   });
 });
 
@@ -270,7 +262,7 @@ describe("Ghidra Mach-O slice support", () => {
 
 describe("Ghidra platform support", () => {
   it("commits the PE role and managed classification to profile identity", async () => {
-    const ghidra = provider({ ...installationHost(), platform: "win32" });
+    const ghidra = provider(installationHost());
     const application = peTarget("x86_64");
     const library = {
       ...application,
@@ -308,158 +300,6 @@ describe("Ghidra platform support", () => {
     expect(nonPe.value.profile.parameters).not.toHaveProperty(
       "native_aot_metadata",
     );
-  });
-
-  it("keeps Windows annotation mutation unavailable independently of native controls", () => {
-    const ghidra = provider({ ...installationHost(), platform: "win32" });
-    expect(
-      ghidra
-        .capabilities()
-        .find(({ operation }) => operation === "annotate_native_function"),
-    ).toMatchObject({
-      available: false,
-      reason: "Windows Ghidra P0 does not admit database mutation.",
-      availabilityCode: "unsupported_host",
-    });
-  });
-
-  it("keeps Windows P0 unavailable until native isolation authority exists", () => {
-    const ghidra = provider({ ...installationHost(), platform: "win32" });
-    const nativeApplication = peTarget("x86_64");
-
-    for (const architecture of ["x86", "x86_64"] as const)
-      expect(ghidra.inspectTargetSupport(peTarget(architecture))).toMatchObject(
-        {
-          status: "supported",
-          diagnostics: {
-            host_platform: "win32",
-            architecture,
-            executable_role: "application",
-            managed: false,
-          },
-        },
-      );
-    expect(ghidra.inspectAvailability()).toMatchObject({
-      status: "unavailable",
-      code: "unsupported_host",
-      reason: expect.stringContaining(
-        "Windows native controls are unavailable",
-      ),
-      diagnostics: {
-        windows_security: {
-          job_object_process_ownership: expect.objectContaining({
-            available: false,
-            proof: "not-proven",
-          }),
-          private_runtime_dacl: expect.objectContaining({
-            available: false,
-            proof: "not-proven",
-          }),
-          reparse_safe_path_admission: expect.objectContaining({
-            available: false,
-            proof: "not-proven",
-          }),
-        },
-      },
-    });
-    expect(ghidra.capabilities()).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          operation: "list_procedures",
-          available: false,
-          availabilityCode: "unsupported_host",
-          limitations: expect.arrayContaining([
-            expect.stringContaining(
-              "matching packaged Windows x64 native addon",
-            ),
-            expect.stringContaining(
-              "private DACLs, and Job Object ownership automatically",
-            ),
-          ]),
-        }),
-      ]),
-    );
-    expect(
-      ghidra.inspectTargetSupport({
-        ...nativeApplication,
-        executableRole: "non-executable",
-      }),
-    ).toMatchObject({
-      status: "unsupported",
-      code: "target_role_unsupported",
-    });
-    expect(
-      ghidra.inspectTargetSupport({ ...nativeApplication, managed: true }),
-    ).toMatchObject({
-      status: "unsupported",
-      code: "managed_target_unsupported",
-    });
-    expect(
-      ghidra.inspectTargetSupport(executableTarget("elf", "x86_64")),
-    ).toMatchObject({
-      status: "unsupported",
-      code: "target_format_unsupported",
-    });
-    expect(
-      ghidra.inspectTargetSupport(executableTarget("pe", "arm64")),
-    ).toMatchObject({
-      status: "unsupported",
-      code: "architecture_unsupported",
-    });
-  });
-});
-
-describe("Ghidra Windows PE fixture admission", () => {
-  it("admits generated PE32 and PE32+ DLLs and applications while preserving native-only Windows admission", async () => {
-    const root = fileURLToPath(new URL("../../", import.meta.url));
-    await promisify(execFile)(process.execPath, [
-      join(root, "scripts/create-ghidra-windows-fixture.mjs"),
-    ]);
-    const ghidra = provider({ ...installationHost(), platform: "win32" });
-    for (const architecture of ["x86", "x86_64"] as const) {
-      for (const dll of [false, true]) {
-        const path = join(
-          root,
-          "build/fixtures",
-          `rea-ghidra-windows${architecture === "x86" ? "-x86" : ""}.${dll ? "dll" : "exe"}`,
-        );
-        const bytes = await readFile(path);
-        const metadata = parseExecutableHeader(bytes, "x64");
-        const role = dll ? "shared-library" : "application";
-        expect(metadata).toMatchObject({
-          ok: true,
-          value: {
-            format: "pe",
-            architecture,
-            executableRole: role,
-            managed: false,
-          },
-        });
-        if (!metadata.ok) throw new Error(metadata.error);
-        if (metadata.value.format !== "pe")
-          throw new Error("Expected a PE fixture");
-        const target: BinaryTarget = {
-          path,
-          sha256: createHash("sha256").update(bytes).digest("hex"),
-          kind: "executable",
-          ...metadata.value,
-        };
-        expect(ghidra.inspectTargetSupport(target).status).toBe("supported");
-        for (const [candidate, code] of [
-          [
-            { ...target, executableRole: "non-executable" },
-            "target_role_unsupported",
-          ],
-          [{ ...target, managed: true }, "managed_target_unsupported"],
-          [{ ...target, architecture: "arm64" }, "architecture_unsupported"],
-        ] as const) {
-          expect(ghidra.inspectTargetSupport(candidate)).toMatchObject({
-            status: "unsupported",
-            code,
-          });
-        }
-      }
-    }
   });
 });
 

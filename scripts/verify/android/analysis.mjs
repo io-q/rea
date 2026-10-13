@@ -17,7 +17,6 @@ import {
   resolveJadxConfigurationInputs,
   validateJadxConfiguration,
 } from "../../../dist/android/JadxConfiguration.js";
-import { verifyWindowsAndroidLifecycle } from "./windows-lifecycle.mjs";
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
 const apk = process.env.REA_ANDROID_TEST_APK;
@@ -221,12 +220,7 @@ const lifecycleOptions = {
   repository,
   execute,
 };
-const windowsLifecycle =
-  process.platform === "win32"
-    ? await verifyWindowsAndroidLifecycle(lifecycleOptions)
-    : undefined;
-if (windowsLifecycle === undefined)
-  await verifyAndroidCliCancellation(lifecycleOptions);
+await verifyAndroidCliCancellation(lifecycleOptions);
 await verifyAndroidFailureRecovery({
   java,
   jvmArguments,
@@ -251,10 +245,7 @@ const report = {
   cli_mcp_parity: true,
   original_apk_unchanged: true,
   apk_executed: false,
-  cli_sigterm_cleanup: process.platform !== "win32",
-  ...(windowsLifecycle === undefined
-    ? {}
-    : { windows_lifecycle: windowsLifecycle }),
+  cli_sigterm_cleanup: true,
   metadata_without_code_generation: true,
   stable_overload_selection: true,
 };
