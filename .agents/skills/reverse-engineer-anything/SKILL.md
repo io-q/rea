@@ -2,7 +2,7 @@
 name: reverse-engineer-anything
 description: Reverse engineer native, managed, Electron/JavaScript, packaged, firmware, and browser targets with REA. Use shipped-artifact or requested runtime evidence to explain features, compare versions, decompile code, or guide a reconstruction. Skip REA for ordinary source-repository architecture analysis.
 metadata:
-  version: "40"
+  version: "41"
 ---
 
 # REA
@@ -33,6 +33,8 @@ availability have different remedies; avoid repeating setup for all of them.
 
 Prefer an existing `rea` CLI. When none is installed and REA package acquisition
 is within the authorized scope, use `npx -y rea-agents@latest` in its place.
+Without connected REA tools, or to keep tool schemas out of context, call the
+same tools through the CLI; read [shell tool calls](references/cli-agent-workflow.md).
 Configuration repair starts with a read-only setup plan; show paths, backups and
 skill replacement before applying authorized changes. Preserve existing approval
 and target-execution boundaries. REA setup never installs or upgrades unrelated
@@ -255,6 +257,8 @@ as complete while required questions remain open.
   [references/runtime-observation.md](references/runtime-observation.md)
 - Evidence paging, comparisons, residual unknowns, and verification:
   [references/evidence-workflows.md](references/evidence-workflows.md)
+- Discovering and calling tools from a shell with `rea tools`, `rea describe`
+  and `rea call`: [references/cli-agent-workflow.md](references/cli-agent-workflow.md)
 
 ## Finish the task
 
