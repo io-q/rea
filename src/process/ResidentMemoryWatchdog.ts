@@ -34,8 +34,9 @@ const readLinuxResidentBytes: ResidentMemoryReader = async (pid) => {
 
 const readDarwinResidentBytes: ResidentMemoryReader = async (pid) => {
   try {
+    // Absolute path: a caller-controlled PATH must not disable the limit.
     const { stdout } = await execFileOutput(
-      "ps",
+      "/bin/ps",
       ["-o", "rss=", "-p", String(pid)],
       { timeout: 1_000 },
     );

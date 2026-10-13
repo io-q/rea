@@ -36,8 +36,9 @@ export interface OwnedProviderProcessSpawnOptions {
    * sample exceeds the budget, marks `memoryLimitReached` and SIGKILLs the
    * owned process group through verified ownership cleanup. It is a sampled
    * RSS limit, not a heap limit: bursts between samples can overshoot it, and
-   * other members of the group are not measured. Refused where RSS cannot be
-   * read.
+   * other members of the group are not measured. Refused on hosts with no
+   * RSS reader (neither Linux nor macOS); a sample that cannot be read is
+   * skipped, so a persistently unreadable RSS leaves the limit unenforced.
    */
   readonly memoryLimitBytes?: number;
   /** Cancels native ownership preparation before provider process creation. */

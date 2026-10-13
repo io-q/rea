@@ -161,6 +161,18 @@ const parseAllowedEffects = (
   };
 };
 
+/** Whether MCP startup will open a target before the tool runs (startup.ts). */
+const configuresInitialTarget = async (
+  environment: Readonly<NodeJS.ProcessEnv>,
+): Promise<boolean> => {
+  const [{ snapshotEnvironment }, { parseConfig }] = await Promise.all([
+    import("../process/snapshotEnvironment.js"),
+    import("../config/parseConfig.js"),
+  ]);
+  const config = parseConfig(snapshotEnvironment({ ...environment }));
+  return config.ok && config.value.hopperTargetPath !== undefined;
+};
+
 /** Run one `call`: resolve, read input, apply the effect gate, call over MCP. */
 const runToolCall = async (
   tool: string,
@@ -182,15 +194,31 @@ const runToolCall = async (
   if (contract === undefined) return unknownTool(tool);
   const input = await readCallInput(source, contract.name);
   if (!input.ok) return input.failure;
-  const missing = missingEffects(contract.effects, allowed.value);
+  // A configured initial target (HOPPER_TARGET_PATH) is opened before the
+  // tool runs, exactly like an open_binary call, so its effects need consent
+  // too; otherwise a session-only tool could launch the provider unflagged.
+  const opensInitialTarget = await configuresInitialTarget(options.environment);
+  const openBinary = contracts.find(({ name }) => name === "open_binary");
+  const missing = [
+    ...new Set([
+      ...missingEffects(contract.effects, allowed.value),
+      ...(opensInitialTarget && openBinary !== undefined
+        ? missingEffects(openBinary.effects, allowed.value)
+        : []),
+    ]),
+  ];
   if (missing.length > 0) {
     const flag = `--allow-effects=${missing.join(",")}`;
+    const reason = opensInitialTarget
+      ? " (including opening the configured HOPPER_TARGET_PATH target, as open_binary would)"
+      : "";
     return fail({
       code: "EFFECTS_NOT_ALLOWED",
-      message: `${contract.name} needs consent for effects not allowed: ${missing.join(", ")}. Re-run with ${flag} to permit them.`,
+      message: `${contract.name} needs consent for effects not allowed${reason}: ${missing.join(", ")}. Re-run with ${flag} to permit them.`,
       tool: contract.name,
       missing_effects: missing,
       allow_flag: flag,
+      ...(opensInitialTarget ? { opens_initial_target: true } : {}),
     });
   }
   const { callToolInProcess } = (await import(

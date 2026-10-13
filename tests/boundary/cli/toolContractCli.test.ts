@@ -54,22 +54,28 @@ const compileSchema = (schema: Record<string, unknown>) =>
 const environment = (): NodeJS.ProcessEnv => ({ ...workspace.environment });
 
 /** Serve one in-process invocation; logCliCommand reports failure via process.exitCode. */
-const serve = async (argv: readonly string[]): Promise<Served> => {
+const serve = async (
+  argv: readonly string[],
+  extraEnvironment: NodeJS.ProcessEnv = {},
+): Promise<Served> => {
   const previousExitCode = process.exitCode;
   process.exitCode = undefined;
   const stderr = vi.spyOn(process.stderr, "write").mockReturnValue(true);
   let stdout = "";
   let exitCode = 0;
   try {
-    await createCli(environment()).serve([...argv, "--json"], {
-      env: {},
-      exit: (code) => {
-        exitCode = code;
+    await createCli({ ...environment(), ...extraEnvironment }).serve(
+      [...argv, "--json"],
+      {
+        env: {},
+        exit: (code) => {
+          exitCode = code;
+        },
+        stdout: (text) => {
+          stdout += text;
+        },
       },
-      stdout: (text) => {
-        stdout += text;
-      },
-    });
+    );
     const processExitCode = Number(process.exitCode ?? 0);
     return {
       stdout,
@@ -253,6 +259,26 @@ describe("tool calls match the MCP server", () => {
         missing_effects: ["launchesProcess"],
         allow_flag: "--allow-effects=launchesProcess",
       }),
+    });
+  });
+
+  it("requires open_binary's effects when HOPPER_TARGET_PATH opens a target", async () => {
+    // current_address declares only mutatesSession, but a configured initial
+    // target is opened (launching the provider) before the tool runs.
+    const target = { HOPPER_TARGET_PATH: `${workspace.root}/target.bin` };
+    const refused = await serve(["call", "current_address", "{}"], target);
+    expect(refused.exitCode).toBe(1);
+    expect(refused.json).toMatchObject({
+      error: {
+        code: "EFFECTS_NOT_ALLOWED",
+        missing_effects: ["launchesProcess"],
+        allow_flag: "--allow-effects=launchesProcess",
+        opens_initial_target: true,
+      },
+    });
+    const unconfigured = await serve(["call", "current_address", "{}"]);
+    expect(unconfigured.json).not.toMatchObject({
+      error: { code: "EFFECTS_NOT_ALLOWED" },
     });
   });
 
